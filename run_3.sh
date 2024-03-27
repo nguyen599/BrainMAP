@@ -1,1 +1,0 @@
-python main.py --cfg configs/Mamba_ablation/peptides-struct-EX_2.yaml
