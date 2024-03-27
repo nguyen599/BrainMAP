@@ -1,1 +1,0 @@
-python main.py --cfg configs/Mamba_ablation/vocsuperpixels-EX_2.yaml
