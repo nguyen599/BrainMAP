@@ -24,3 +24,13 @@ pip install wandb
 pip install causal-conv1d==1.0.2
 pip install mamba-ssm==1.0.1
 ```
+
+## Experiment
+### Step 1: Modifying configs
+
+### Step 2: Running bash
+
+### Step 3: Share Wandb
+#### How to register for a wandb account
+#### How to connect to wandb
+#### How to share running logs
