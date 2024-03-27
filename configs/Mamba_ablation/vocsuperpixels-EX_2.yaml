@@ -1,22 +1,21 @@
-out_dir: results/degre_mult
-metric_best: ap
+out_dir: results/try
+metric_best: f1
 wandb:
-  use: True
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
-  format: OGB
-  name: peptides-functional
-  task: graph
-  task_type: classification_multilabel
+  format: PyG-VOCSuperpixels
+  name: edge_wt_region_boundary
+  slic_compactness: 30
+  task: graph  # Even if VOC is node-level task, this needs to be set as 'graph'
+  task_type: classification
   transductive: False
   node_encoder: True
-  node_encoder_name: Atom+LapPE
+  node_encoder_name: VOCNode+LapPE
   node_encoder_bn: False
   edge_encoder: True
-  edge_encoder_name: Bond
+  edge_encoder_name: VOCEdge
   edge_encoder_bn: False
-  split_mode: standard
 posenc_LapPE:
   enable: True
   eigen:
@@ -29,43 +28,38 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 128
+  batch_size: 32
   eval_period: 1
   ckpt_period: 100
 model:
   type: GPSModel
-  loss_fun: cross_entropy
-  graph_pooling: mean
+  loss_fun: weighted_cross_entropy
   num_experts: 4
 gt:
   layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
-  # layer_type: CustomGatedGCN+Mamba_Random_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+"Mamba_Degree_Noise_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Random_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_MultiHead_Multi
-  # layer_type: CustomGatedGCN+Mamba_RandomWalk_NodeMulti
-  n_heads: 4
+  layers: 4
+  n_heads: 8
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0
   attn_dropout: 0.5
   layer_norm: False
   batch_norm: True
 gnn:
-  head: default
+  head: inductive_node
   layers_pre_mp: 0
-  layers_post_mp: 1  # Not used when `gnn.head: san_graph`
+  layers_post_mp: 3
   dim_inner: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   batchnorm: True
   act: relu
   dropout: 0.0
+  agg: mean
+  normalize_adj: False
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 0.01
-  base_lr: 0.001
-  max_epoch: 200
+  weight_decay: 0.001
+  base_lr: 0.0015
+  max_epoch: 300
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0
-test_with_subgraph: True

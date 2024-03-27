@@ -1,46 +1,34 @@
 out_dir: results
-metric_best: accuracy-SBM
+metric_best: accuracy
 wandb:
   use: True
   project: GNN-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
-  format: PyG-GNNBenchmarkDataset
-  name: PATTERN
+  format: PyG-MalNetTiny
+  name: LocalDegreeProfile
   task: graph
   task_type: classification
   transductive: False
-  split_mode: standard
   node_encoder: True
-  node_encoder_name: LapPE
-  node_encoder_bn: False
+  node_encoder_name: LinearNode
   edge_encoder: True
   edge_encoder_name: DummyEdge
   edge_encoder_bn: False
-posenc_LapPE:
-  enable: True
-  eigen:
-    laplacian_norm: none
-    eigvec_norm: L2
-    max_freqs: 16
-  model: DeepSet
-  dim_pe: 16
-  layers: 2
-  n_heads: 4  # Only used when `posenc.model: Transformer`
-  raw_norm_type: none
 train:
   mode: custom
-  batch_size: 128 # 32
+  batch_size: 16 #default 16
   eval_period: 1
   ckpt_period: 100
 model:
   type: GPSModel
-  loss_fun: weighted_cross_entropy
+  loss_fun: cross_entropy
   edge_decoding: dot
+  graph_pooling: max
   num_experts: 4
-gt:  # Hyperparameters optimized for up to ~500k budget.
-  layer_type: CustomGatedGCN+Mamba_RandomWalk_NodeMulti
-  layers: 6
+gt:
+  layer_type: CustomGatedGCN+Mamba_Noise_SameIn_WeightedSum_Multi
+  layers: 5
   n_heads: 4
   dim_hidden: 64  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0
@@ -48,9 +36,9 @@ gt:  # Hyperparameters optimized for up to ~500k budget.
   layer_norm: False
   batch_norm: True
 gnn:
-  head: inductive_node
-  layers_pre_mp: 0
-  layers_post_mp: 3
+  head: default
+  layers_pre_mp: 1
+  layers_post_mp: 3  # Not used when `gnn.head: san_graph`
   dim_inner: 64  # `gt.dim_hidden` must match `gnn.dim_inner`
   batchnorm: True
   act: relu
@@ -60,9 +48,9 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 0.0001
-  base_lr: 0.001
-  max_epoch: 100
+  weight_decay: 1e-5
+  base_lr: 0.0015
+  max_epoch: 150
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 5
+  num_warmup_epochs: 10
 seed: 0

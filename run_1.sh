@@ -1,0 +1,1 @@
+python main.py --cfg configs/Mamba_ablation/malnettiny-EX_2.yaml

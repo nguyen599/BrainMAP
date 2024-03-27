@@ -3,7 +3,7 @@ metric_best: f1
 wandb:
   use: True
   project: LRGB-Benchmark-RandomSeed
-  entity: project
+  entity: vjd5zr
 dataset:
   format: PyG-COCOSuperpixels
   name: edge_wt_region_boundary
@@ -29,14 +29,15 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 64
+  batch_size: 32
   eval_period: 1
   ckpt_period: 100
 model:
   type: GPSModel
   loss_fun: weighted_cross_entropy
+  num_experts: 4
 gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise_Bucket
+  layer_type: CustomGatedGCN+Mamba_Random_WeightedSum_Multi
   layers: 4
   n_heads: 8
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`

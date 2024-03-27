@@ -38,13 +38,7 @@ model:
   graph_pooling: mean
   num_experts: 4
 gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
-  # layer_type: CustomGatedGCN+Mamba_Random_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+"Mamba_Degree_Noise_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Random_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_MultiHead_Multi
-  # layer_type: CustomGatedGCN+Mamba_RandomWalk_NodeMulti
+  layer_type: CustomGatedGCN+Mamba_Noise_SameIn_SparseMoE
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0

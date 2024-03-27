@@ -2,7 +2,7 @@ out_dir: results
 metric_best: mrr
 num_workers: 4
 wandb:
-  use: True
+  use: False
   project: pcqm4m-contact
 dataset:
   format: OGB

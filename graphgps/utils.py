@@ -3,6 +3,8 @@ import logging
 import torch
 from torch_geometric.utils import remove_self_loops
 from torch_scatter import scatter
+import torch.nn as nn
+import torch.nn.functional as F
 
 from yacs.config import CfgNode
 
@@ -28,8 +30,7 @@ def negate_edge_index(edge_index, batch=None):
 
     batch_size = batch.max().item() + 1
     one = batch.new_ones(batch.size(0))
-    num_nodes = scatter(one, batch,
-                        dim=0, dim_size=batch_size, reduce='add')
+    num_nodes = scatter(one, batch, dim=0, dim_size=batch_size, reduce="add")
     cum_nodes = torch.cat([batch.new_zeros(1), num_nodes.cumsum(dim=0)])
 
     idx0 = batch[edge_index[0]]
@@ -40,8 +41,7 @@ def negate_edge_index(edge_index, batch=None):
     for i in range(batch_size):
         n = num_nodes[i].item()
         size = [n, n]
-        adj = torch.ones(size, dtype=torch.short,
-                         device=edge_index.device)
+        adj = torch.ones(size, dtype=torch.short, device=edge_index.device)
 
         # Remove existing edges from the full N x N adjacency matrix
         flattened_size = n * n
@@ -49,9 +49,8 @@ def negate_edge_index(edge_index, batch=None):
         _idx1 = idx1[idx0 == i]
         _idx2 = idx2[idx0 == i]
         idx = _idx1 * n + _idx2
-        zero = torch.zeros(_idx1.numel(), dtype=torch.short,
-                           device=edge_index.device)
-        scatter(zero, idx, dim=0, out=adj, reduce='mul')
+        zero = torch.zeros(_idx1.numel(), dtype=torch.short, device=edge_index.device)
+        scatter(zero, idx, dim=0, out=adj, reduce="mul")
 
         # Convert to edge index format
         adj = adj.view(size)
@@ -72,7 +71,7 @@ def flatten_dict(metrics):
     Returns:
         A flat dictionary with names prefixed with "train/" , "val/" , "test/"
     """
-    prefixes = ['train', 'val', 'test']
+    prefixes = ["train", "val", "test"]
     result = {}
     for i in range(len(metrics)):
         # Take the latest metrics.
@@ -92,9 +91,11 @@ def cfg_to_dict(cfg_node, key_list=[]):
 
     if not isinstance(cfg_node, CfgNode):
         if type(cfg_node) not in _VALID_TYPES:
-            logging.warning(f"Key {'.'.join(key_list)} with "
-                            f"value {type(cfg_node)} is not "
-                            f"a valid type; valid types: {_VALID_TYPES}")
+            logging.warning(
+                f"Key {'.'.join(key_list)} with "
+                f"value {type(cfg_node)} is not "
+                f"a valid type; valid types: {_VALID_TYPES}"
+            )
         return cfg_node
     else:
         cfg_dict = dict(cfg_node)
@@ -106,26 +107,67 @@ def cfg_to_dict(cfg_node, key_list=[]):
 def make_wandb_name(cfg):
     # Format dataset name.
     dataset_name = cfg.dataset.format
-    if dataset_name.startswith('OGB'):
+    if dataset_name.startswith("OGB"):
         dataset_name = dataset_name[3:]
-    if dataset_name.startswith('PyG-'):
+    if dataset_name.startswith("PyG-"):
         dataset_name = dataset_name[4:]
-    if dataset_name in ['GNNBenchmarkDataset', 'TUDataset']:
+    if dataset_name in ["GNNBenchmarkDataset", "TUDataset"]:
         # Shorten some verbose dataset naming schemes.
         dataset_name = ""
-    if cfg.dataset.name != 'none':
+    if cfg.dataset.name != "none":
         dataset_name += "-" if dataset_name != "" else ""
-        if cfg.dataset.name == 'LocalDegreeProfile':
-            dataset_name += 'LDP'
+        if cfg.dataset.name == "LocalDegreeProfile":
+            dataset_name += "LDP"
         else:
             dataset_name += cfg.dataset.name
     # Format model name.
     model_name = cfg.model.type
-    if cfg.model.type in ['gnn', 'custom_gnn']:
+    if cfg.model.type in ["gnn", "custom_gnn"]:
         model_name += f".{cfg.gnn.layer_type}"
-    elif cfg.model.type == 'GPSModel':
+    elif cfg.model.type == "GPSModel":
         model_name = f"GPS.{cfg.gt.layer_type}"
     model_name += f".{cfg.name_tag}" if cfg.name_tag else ""
     # Compose wandb run name.
     name = f"{dataset_name}.{model_name}.r{cfg.run_id}"
     return name
+
+
+class TopKRouter(nn.Module):
+    def __init__(self, n_embed, num_experts, top_k):
+        super(TopKRouter, self).__init__()
+        self.top_k = top_k
+        self.linear = nn.Linear(n_embed, num_experts)
+
+    def forward(self, mh_output):
+        logits = self.linear(mh_output)
+        top_k_logits, indices = logits.topk(self.top_k, dim=-1)
+        zeros = torch.full_like(logits, float("-inf"))
+        sparse_logits = zeros.scatter(-1, indices, top_k_logits)
+        router_output = F.softmax(sparse_logits, dim=-1)
+        return router_output, indices
+
+
+class NoisyTopkRouter(nn.Module):
+    def __init__(self, n_embed, num_experts, top_k):
+        super(NoisyTopkRouter, self).__init__()
+        self.top_k = top_k
+        # layer for router logits
+        self.topkroute_linear = nn.Linear(n_embed, num_experts)
+        self.noise_linear = nn.Linear(n_embed, num_experts)
+
+    def forward(self, mh_output):
+        # mh_ouput is the output tensor from multihead self attention block
+        logits = self.topkroute_linear(mh_output)
+
+        # Noise logits
+        noise_logits = self.noise_linear(mh_output)
+
+        # Adding scaled unit gaussian noise to the logits
+        noise = torch.randn_like(logits) * F.softplus(noise_logits)
+        noisy_logits = logits + noise
+
+        top_k_logits, indices = noisy_logits.topk(self.top_k, dim=-1)
+        zeros = torch.full_like(noisy_logits, float("-inf"))
+        sparse_logits = zeros.scatter(-1, indices, top_k_logits)
+        router_output = F.softmax(sparse_logits, dim=-1)
+        return router_output, indices

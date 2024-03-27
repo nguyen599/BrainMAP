@@ -1,14 +1,15 @@
-out_dir: results/degre_mult
-metric_best: ap
+out_dir: results
+metric_best: mae
+metric_agg: argmin
 wandb:
   use: True
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
   format: OGB
-  name: peptides-functional
+  name: peptides-structural
   task: graph
-  task_type: classification_multilabel
+  task_type: regression
   transductive: False
   node_encoder: True
   node_encoder_name: Atom+LapPE
@@ -16,7 +17,6 @@ dataset:
   edge_encoder: True
   edge_encoder_name: Bond
   edge_encoder_bn: False
-  split_mode: standard
 posenc_LapPE:
   enable: True
   eigen:
@@ -34,17 +34,12 @@ train:
   ckpt_period: 100
 model:
   type: GPSModel
-  loss_fun: cross_entropy
+  loss_fun: l1
   graph_pooling: mean
   num_experts: 4
 gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
-  # layer_type: CustomGatedGCN+Mamba_Random_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+"Mamba_Degree_Noise_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Random_Average_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_WeightedSum_Multi
-  # layer_type: CustomGatedGCN+Mamba_Degree_Noise_MultiHead_Multi
-  # layer_type: CustomGatedGCN+Mamba_RandomWalk_NodeMulti
+  layer_type: CustomGatedGCN+Mamba_Noise_SameIn_WeightedSum_Multi
+  layers: 4
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0
@@ -68,4 +63,3 @@ optim:
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0
-test_with_subgraph: True

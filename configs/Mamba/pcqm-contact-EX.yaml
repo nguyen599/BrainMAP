@@ -37,8 +37,9 @@ model:
   type: GPSModel
   loss_fun: cross_entropy
   edge_decoding: dot
+  num_experts: 4
 gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise #Mamba_Hybrid_Degree_Noise #Mamba
+  layer_type: CustomGatedGCN+Mamba_Noise_SameIn_WeightedSum_Multi #Mamba_Hybrid_Degree_Noise #Mamba
   layers: 4
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
@@ -62,4 +63,4 @@ optim:
   max_epoch: 100
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
-seed: 0
+seed: 1

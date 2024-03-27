@@ -39,7 +39,7 @@ model:
   edge_decoding: dot
   num_experts: 4
 gt:  # Hyperparameters optimized for ~500k budget.
-  layer_type: CustomGatedGCN+Mamba_RandomWalk_NodeMulti
+  layer_type: CustomGatedGCN+Mamba_Noise_SameIn_WeightedSum_Multi
   layers: 16
   n_heads: 8
   dim_hidden: 48  # `gt.dim_hidden` must match `gnn.dim_inner`
