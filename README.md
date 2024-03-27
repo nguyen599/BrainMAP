@@ -1,57 +1,26 @@
-<p align="center">
-<img src="/images/title_page.png"/> 
-</p>
+# Introduction
+This repo is forked from Graph-mamba paper, for reproduction use.
 
-
-Attention mechanisms have been widely used to capture long-range dependencies among nodes in Graph Transformers. Bottlenecked by the quadratic computational cost, attention mechanisms fail to scale in large graphs. Recent improvements in computational efficiency are mainly achieved by attention sparsification with random or heuristic-based graph subsampling, which falls short in data-dependent context reasoning. State space models (SSMs), such as Mamba, have gained prominence for their effectiveness and efficiency in modeling long-range dependencies in sequential data. However, adapting SSMs to non-sequential graph data presents a notable challenge. 
-
-In this work, we introduce Graph-Mamba, the first attempt to enhance long-range context modeling in graph networks by integrating a Mamba block with the input-dependent node selection mechanism. Specifically, we formulate graph-centric node prioritization and permutation strategies to enhance context-aware reasoning, leading to a substantial improvement in predictive performance. Extensive experiments on ten benchmark datasets demonstrate that Graph-Mamba outperforms state-of-the-art methods in long-range graph prediction tasks, with a fraction of the computational cost in both FLOPs and GPU memory consumption.
-
-<p align="center">
-<img src="/images/main_results.png"/> 
-</p>
-
-### Python environment setup with Conda
-
-```bash
-conda create --name graph-mamba --file requirements_conda.txt
+# Guideline
+## Installation
+```
+conda create -n graph-mamba python==3.9
 conda activate graph-mamba
-conda clean --all
+pip install torch==1.13.0
+pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
+pip install torch_geometric==2.0.4
+
+pip install transformers==4.36.2
+pip install torchmetrics==0.10.3
+pip install openbabel-wheel
+pip install fsspec 
+pip install rdkit
+pip install pytorch-lightning yacs
+pip install performer-pytorch
+pip install tensorboardX
+pip install ogb
+pip install wandb
+
+pip install causal-conv1d==1.0.2
+pip install mamba-ssm==1.0.1
 ```
-To troubleshoot Mamba installation, please refer to https://github.com/state-spaces/mamba.
-
-For alternative installation via poetry, refer to poetry_steps.txt.
-
-### Running Graph-Mamba
-```bash
-conda activate graph-mamba
-
-# Running Graph-Mamba for Peptides-func dataset
-python main.py --cfg configs/Mamba/peptides-func-EX.yaml  wandb.use False
-```
-You can also set your wandb settings and use wandb.
-
-### Guide on configs files
-
-Most of the configs are shared with [GraphGPS](https://github.com/rampasek/GraphGPS) and [Exphormer](https://github.com/hamed1375/Exphormer) code. You can change the following parameters in the config files for different parameters and variants of Graph-Mamba:
-```
-gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
-  # Refer to graphgps/layer/gps_layer.py for NUM_BUCKETS
-  # CustomGatedGCN+Mamba_Hybrid_Degree_Noise_Bucket - For large graph datasets that use the bucketing technique
-  # CustomGatedGCN+Mamba_Hybrid_Noise - For permutation-only Graph-Mamba
-  # CustomGatedGCN+Mamba - For baseline Mamba without Graph-Mamba adaptations
-```
-
-### Preprint and Citation
-Our [preprint](https://arxiv.org/abs/2402.00789) is avaible on arXiv with the following citation:
-```
-@article{Graph-Mamba,
-Author = {Chloe Wang and Oleksii Tsepa and Jun Ma and Bo Wang},
-Title = {Graph-Mamba: Towards Long-Range Graph Sequence Modeling with Selective State Spaces},
-Year = {2024},
-journal={arXiv preprint arXiv:2402.00789},
-}
-```
-
-
