@@ -26,11 +26,39 @@ pip install mamba-ssm==1.0.1
 ```
 
 ## Experiment
-### Step 1: Modifying configs
+### Step 1: Share Wandb
+#### 1. How to start a wandb account?
+Sign up an account for this website.
+```
+https://wandb.ai/site
+```
 
-### Step 2: Running bash
+On the `https://wandb.ai/home` page, around the right top corner thereis a blue (green) button with text `Invite Teammates` on it.
 
-### Step 3: Share Wandb
-#### How to register for a wandb account
-#### How to connect to wandb
-#### How to share running logs
+Click on that button, then create a new account with any name,  **work** and **research** are both OK (**research** are free to use). 
+
+Then create two new projects called `GNN-Benchmark-RandomSeed` and `LRGB-Benchmark-RandomSeed`
+
+#### 2. How to connect to wandb
+Open your remote, under the repo of `Graph Mamba`.
+
+In command line, type in
+```
+pip install wandb
+wandb login
+```
+Then it asks you to give the API key, where you could type in the key from `https://wandb.ai/{your-team-name}`.
+
+Then, modify the `configs\Mamba\{running-config-file}.yaml` in local repo.
+```
+wandb:
+  use: True
+  project: LRGB-Benchmark-RandomSeed
+  entity: vjd5zr -> {your-username} (Click on your profile on the right top corner, then the second name under your avatar)
+```
+
+#### 3. How to share running logs
+Add team members to the team account. On the left column in `https://wandb.ai/{your-team-name}`, click on `Invite Team Members`. (Here please type in my user-name vjd5zr)
+
+### Step 2: Running experiments
+Running all of the commands in `run.sh`.
