@@ -6,7 +6,6 @@ Problem:
     1. Parallel for MoE
         1. either for data or for simple implementation
     2. Try smaller datasets
-    3. R
 
 
 TODO:
@@ -17,7 +16,7 @@ TODO:
     3. each moe with a random subgraph, each length with 10 <Done>
     4. each moe with several random walk, each moe the random walk length is different <Done>
     5. above with a global model <Done>
-    6. not random walk, only CNN of the subgraph, no moe. 
+    6. not random walk, only CNN of the subgraph, no moe. <Done>
 1. run exp
     1. Mamba_RandomGraph_NodeMulti
     2. Mamba_RandomWalk_NodeMulti

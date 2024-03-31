@@ -23,6 +23,8 @@ pip install wandb
 
 pip install causal-conv1d==1.0.2
 pip install mamba-ssm==1.0.1
+
+Note: need to modify based on your own cuda version
 ```
 
 ## Experiment
