@@ -27,6 +27,7 @@ TODO:
     6. Mamba_Several_Same_RandomWalk_NodeMulti
     7. Mamba_Hybrid_Degree_Noise_RandomWalk_NodeMulti
     8. Mamba_NodeGCN
+    9. Mamba_Several_RandomWalk_NodeMulti
 2. rank learnable
 3. loss balance
 
