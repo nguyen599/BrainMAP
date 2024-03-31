@@ -58,7 +58,7 @@ wandb:
 ```
 
 #### 3. How to share running logs
-Add team members to the team account. On the left column in `https://wandb.ai/{your-team-name}`, click on `Invite Team Members`. (Here please type in my user-name vjd5zr)
+Add team members to the team account. On the left column in `https://wandb.ai/{your-team-name}`, click on `Invite Team Members`. (Here please type in my account vjd5zr@virginia.edu)
 
 ### Step 2: Running experiments
 Running all of the commands in `run.sh`.

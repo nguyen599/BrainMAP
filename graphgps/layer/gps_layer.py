@@ -344,7 +344,9 @@ class GPSLayer(nn.Module):
                 self.top_k_gate = NoisyTopkRouter(dim_h, num_experts, 2)
 
             elif global_model_type.split("_")[-1] == "NodeMulti":
+
                 num_experts = cfg.model.num_experts
+                self.random_walk_length = cfg.model.random_walk_length
                 self.self_attn = Mamba(
                     d_model=dim_h,  # Model dimension d_model
                     d_state=16,  # SSM state expansion factor
@@ -366,6 +368,38 @@ class GPSLayer(nn.Module):
 
                 self.softmax = nn.Softmax(dim=-1)
                 self.gating_linear = nn.Linear(dim_h, num_experts)
+
+            elif global_model_type.split("_")[-1] == "NodeGCN":
+                num_experts = cfg.model.num_experts
+                self.self_attn_node = Mamba(
+                    d_model=dim_h,  # Model dimension d_model
+                    d_state=16,  # SSM state expansion factor
+                    d_conv=4,  # Local convolution width
+                    expand=1,  # Block expansion factor
+                )
+
+                self.self_attn = nn.ParameterList(
+                    [
+                        Mamba(
+                            d_model=dim_h,  # Model dimension d_model
+                            d_state=16,  # SSM state expansion factor
+                            d_conv=4,  # Local convolution width
+                            expand=1,  # Block expansion factor
+                        )
+                        for i in range(num_experts)
+                    ]
+                )
+
+                self.neighbor_encoder_list = nn.ModuleList(
+                    GatedGCNLayer(
+                        dim_h,
+                        dim_h,
+                        dropout=dropout,
+                        residual=True,
+                        equivstable_pe=equivstable_pe,
+                    )
+                    for i in range(num_experts * 2)
+                )
 
             elif global_model_type.split("_")[-1] == "Bi":
                 self.self_attn = nn.ParameterList(
@@ -1825,7 +1859,7 @@ class GPSLayer(nn.Module):
                         mamba_arr.append(h_attn)
                     h_attn = sum(mamba_arr) / 5
 
-            elif self.global_model_type == "Mamba_RandomGraph_NodeLevel":
+            elif self.global_model_type == "Mamba_RandomGraph_NodeMulti":
                 """
                 1.Input:batch.edge_index, batch.batch, batch.x
                 2.Get random walk for subgraph
@@ -1837,25 +1871,43 @@ class GPSLayer(nn.Module):
                 row = batch.edge_index[0]
                 col = batch.edge_index[1]
                 start = torch.arange(len(batch.x)).to(row.device)
-                walks = []
-                for i in range(5):
-                    walk = random_walk(row, col, start, walk_length=20)
-                    walk = torch.flip(walk, [-1])
-                    walks.append(walk)
-                subgraph = torch.cat(walks, dim=1)
-                # getting subgraph
-                subgraph = subgraph.sort(dim=1)[0]
-                unique_x, indices = torch.unique_consecutive(
-                    subgraph, return_inverse=True
-                )
-                indices -= indices.min(dim=1, keepdims=True)[0]
-                result = torch.zeros_like(subgraph)
-                result = result.scatter_(1, indices, subgraph)
-                walk = torch.flip(result, [1])
 
-                h_walk = h[walk]
-                h = self.self_attn_node(h_walk)
-                h_attn = h_walk[:, -1, :]
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walks = []
+                    for i in range(10):
+                        walk = random_walk(
+                            row, col, start, walk_length=self.random_walk_length
+                        )
+                        walk = torch.flip(walk, [-1])
+                        walks.append(walk)
+                    subgraph = torch.cat(walks, dim=1)
+                    # getting subgraph
+                    subgraph = subgraph.sort(dim=1)[0]
+                    unique_x, indices = torch.unique_consecutive(
+                        subgraph, return_inverse=True
+                    )
+                    indices -= indices.min(dim=1, keepdims=True)[0]
+                    result = torch.zeros_like(subgraph)
+                    result = result.scatter_(1, indices, subgraph)
+                    walk = torch.flip(result, [1])
+
+                    h_walk = h[walk]
+                    h_attn_list.append(mod(h_walk)[:, -1, :])
+                    # mean pooling
+                    # h_attn = torch.mean(h_walk, dim=1)
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
 
             elif self.global_model_type == "Mamba_RandomWalk_NodeLevel":
                 row = batch.edge_index[0]
@@ -1874,43 +1926,195 @@ class GPSLayer(nn.Module):
                 col = batch.edge_index[1]
                 start = torch.arange(len(batch.x)).to(row.device)
 
-                if batch.split == "train":
-                    h_attn_gating = self.gating_linear(h)
-                    h_attn_list = []
-                    for mod in self.self_attn_node:
-                        # walk = random_walk(row, col, start, walk_length=20)
-                        walk = torch.zeros(h.shape[0], 20).to(h.device).long()
-                        walk = torch.flip(walk, [-1])
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walk = random_walk(row, col, start, walk_length=20)
+
+                    h_walk = h[walk]
+                    h_walk = mod(h_walk)
+                    h_attn_list.append(h_walk[:, -1, :])
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+
+            elif self.global_model_type == "Mamba_RandomWalk_MeanPooling_NodeMulti":
+                row = batch.edge_index[0]
+                col = batch.edge_index[1]
+                start = torch.arange(len(batch.x)).to(row.device)
+
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walk = random_walk(row, col, start, walk_length=20)
+
+                    h_walk = h[walk]
+                    h_walk = mod(h_walk)
+                    h_attn_list.append(torch.mean(h_walk, dim=1))
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+
+            elif self.global_model_type == "Mamba_RandomWalk_Staircase_NodeMulti":
+                row = batch.edge_index[0]
+                col = batch.edge_index[1]
+                start = torch.arange(len(batch.x)).to(row.device)
+
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for i, mod in enumerate(self.self_attn_node):
+                    walk = random_walk(row, col, start, walk_length=i * 4 + 1)
+
+                    h_walk = h[walk]
+                    h_walk = mod(h_walk)
+                    h_attn_list.append(h_walk[:, -1, :])
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+
+            elif self.global_model_type == "Mamba_Several_RandomWalk_NodeMulti":
+                """
+                1.Input:batch.edge_index, batch.batch, batch.x
+                2.Get random walk for subgraph
+                    1. subgraph combine need to pad
+                3.Mamba on subgraph
+                4.Final token for final layer mamba
+                """
+                # m random walk compose a subgraph
+                row = batch.edge_index[0]
+                col = batch.edge_index[1]
+                start = torch.arange(len(batch.x)).to(row.device)
+
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walk_attr_list = []
+                    for i in range(10):
+                        walk = random_walk(
+                            row, col, start, walk_length=self.random_walk_length
+                        )
 
                         h_walk = h[walk]
                         h_walk = mod(h_walk)
-                        h_attn_list.append(h_walk[:, -1, :])
-                    h_attn_gating = self.softmax(h_attn_gating)
-                    h_attn = torch.sum(  # weighted sum
-                        torch.stack(
-                            [
-                                h_attn_list[i]
-                                * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
-                                for i in range(len(h_attn_list))
-                            ]
-                        ),
-                        dim=0,
+                        walk_attr_list.append(h_walk[:, -1, :])
+                    h_attn_list.append(sum(walk_attr_list) / len(walk_attr_list))
+                    # mean pooling
+                    # h_attn = torch.mean(h_walk, dim=1)
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+
+            elif (
+                self.global_model_type == "Mamba_Several_RandomWalk_Staircase_NodeMulti"
+            ):
+                """
+                1.Input:batch.edge_index, batch.batch, batch.x
+                2.Get random walk for subgraph
+                    1. subgraph combine need to pad
+                3.Mamba on subgraph
+                4.Final token for final layer mamba
+                """
+                # m random walk compose a subgraph
+                row = batch.edge_index[0]
+                col = batch.edge_index[1]
+                start = torch.arange(len(batch.x)).to(row.device)
+
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for i, mod in enumerate(self.self_attn_node):
+                    walk_attr_list = []
+                    for i in range(10):
+                        walk = random_walk(row, col, start, walk_length=i * 4 + 1)
+
+                        h_walk = h[walk]
+                        h_walk = mod(h_walk)
+                        walk_attr_list.append(h_walk[:, -1, :])
+                    h_attn_list.append(sum(walk_attr_list) / len(walk_attr_list))
+                    # mean pooling
+                    # h_attn = torch.mean(h_walk, dim=1)
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+
+            elif self.global_model_type == "Mamba_Several_Same_RandomWalk_NodeMulti":
+                """
+                1.Input:batch.edge_index, batch.batch, batch.x
+                2.Get random walk for subgraph
+                    1. subgraph combine need to pad
+                3.Mamba on subgraph
+                4.Final token for final layer mamba
+                """
+                # m random walk compose a subgraph
+                row = batch.edge_index[0]
+                col = batch.edge_index[1]
+                start = torch.arange(len(batch.x)).to(row.device)
+
+                for i in range(10):
+                    walk = random_walk(
+                        row, col, start, walk_length=self.random_walk_length
                     )
-                else:
-                    mamba_arr = []
-                    for i in range(1):
-                        h_attn_list = []
-                        for mod in self.self_attn_node:
-                            walk = random_walk(row, col, start, walk_length=20)
-                            walk = torch.flip(walk, [-1])
 
-                            h_walk = h[walk]
+                    h_walk = h[walk]
 
-                            h_walk = mod(h_walk)
-                            h_attn_list.append(h_walk[:, -1, :])
-                        h_attn = sum(h_attn_list) / len(h_attn_list)
-                        mamba_arr.append(h_attn)
-                    h_attn = sum(mamba_arr) / 5
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walk_attr_list = []
+                    h_walk = mod(h_walk)
+                    h_attn_list.append(h_walk[:, -1, :])
+                    # mean pooling
+                    # h_attn = torch.mean(h_walk, dim=1)
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
 
             elif self.global_model_type == "Mamba_SubgraphToken_NodeLevel":
                 """
@@ -1940,7 +2144,7 @@ class GPSLayer(nn.Module):
                 nodelevel_repre = torch.cat(nodelevel_repre, dim=1)
                 h = self.self_attn_node(nodelevel_repre)
 
-            elif self.global_model_type == "Mamba_GCNToken_NodeLevel":
+            elif self.global_model_type == "Mamba_NodeGCN":
                 """
                 three hyper-param: m (total length of random walk), M (number of each random walk), s (number of each subgraph)
                 """
@@ -1953,23 +2157,43 @@ class GPSLayer(nn.Module):
 
                 h_token = h
                 edge_attr_token = batch.edge_attr
-                for m_tilde in range(2):
-                    token_out = self.local_model(
-                        Batch(
-                            batch=batch,
-                            x=h_token,
-                            edge_index=batch.edge_index,
-                            edge_attr=edge_attr_token,
-                            pe_EquivStableLapPE=es_data,
+                for i, neighbor_encoder in enumerate(self.neighbor_encoder_list):
+                    if i < len(self.neighbor_encoder_list) // 2:
+                        h_token_out = neighbor_encoder(
+                            Batch(
+                                batch=batch,
+                                x=h_token,
+                                edge_index=batch.edge_index,
+                                edge_attr=edge_attr_token,
+                                pe_EquivStableLapPE=es_data,
+                            )
                         )
-                    )
+                    else:
+                        h_token_out = neighbor_encoder(
+                            Batch(
+                                batch=batch,
+                                x=h_token,
+                                edge_index=batch.edge_index,
+                                edge_attr=edge_attr_token,
+                                pe_EquivStableLapPE=es_data,
+                            )
+                        )
+                        h_token_out = neighbor_encoder(
+                            Batch(
+                                batch=batch,
+                                x=h_token_out.x,
+                                edge_index=batch.edge_index,
+                                edge_attr=edge_attr_token,
+                                pe_EquivStableLapPE=es_data,
+                            )
+                        )
 
                     # GatedGCN does residual connection and dropout internally.
-                    h_token = token_out.x
-                    edge_attr_token = token_out.edge_attr
+                    h_token = h_token_out.x
+                    edge_attr_token = h_token_out.edge_attr
                     nodelevel_repre.append(h_token)
                 nodelevel_repre = torch.stack(nodelevel_repre, dim=1)
-                h_attn = self.self_attn(nodelevel_repre)
+                h_attn = self.self_attn_node(nodelevel_repre)
                 h_attn = h_attn[:, -1, :]
 
             elif (
@@ -2033,18 +2257,32 @@ class GPSLayer(nn.Module):
 
             elif (
                 self.global_model_type
-                == "Mamba_Hybrid_Degree_Noise_RandomWalk_NodeLevel"
+                == "Mamba_Hybrid_Degree_Noise_RandomWalk_NodeMulti"
             ):
                 row = batch.edge_index[0]
                 col = batch.edge_index[1]
                 start = torch.arange(len(batch.x)).to(row.device)
 
-                walk = random_walk(row, col, start, walk_length=20)
-                walk = torch.flip(walk, [-1])
+                h_attn_gating = self.gating_linear(h)
+                h_attn_list = []
+                for mod in self.self_attn_node:
+                    walk = random_walk(row, col, start, walk_length=20)
 
-                h_walk = h[walk]
-                h_walk = self.self_attn_node(h_walk)
-                h = h_walk[:, -1, :] + h
+                    h_walk = h[walk]
+                    h_walk = mod(h_walk)
+                    h_attn_list.append(h_walk[:, -1, :])
+                h_attn_gating = self.softmax(h_attn_gating)
+                h_walk = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn_list[i]
+                            * h_attn_gating[..., [i]].expand_as(h_attn_list[i])
+                            for i in range(len(h_attn_list))
+                        ]
+                    ),
+                    dim=0,
+                )
+                h = h_walk + h
 
                 if batch.split == "train":
                     deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)

@@ -10,13 +10,25 @@ Problem:
 
 
 TODO:
-1. node-level mamba
-    1. 先找到稳定性能的node-level mamba
-    2. 一定要结合上graph-mamba
-    3. 
-2. different combination of moe
-3. rank learnable
-4. loss balance
+1. different combination of moe
+    1. each moe with one random walk, each length with 20 <Done>
+    2. each moe with several random walk, each length with 10 <Done>
+    3. each moe with the same several random walk, each length with 10 <Done>
+    3. each moe with a random subgraph, each length with 10 <Done>
+    4. each moe with several random walk, each moe the random walk length is different <Done>
+    5. above with a global model <Done>
+    6. not random walk, only CNN of the subgraph, no moe. 
+1. run exp
+    1. Mamba_RandomGraph_NodeMulti
+    2. Mamba_RandomWalk_NodeMulti
+    3. Mamba_RandomWalk_MeanPooling_NodeMulti
+    4. Mamba_RandomWalk_Staircase_NodeMulti
+    5. Mamba_Several_RandomWalk_Staircase_NodeMulti
+    6. Mamba_Several_Same_RandomWalk_NodeMulti
+    7. Mamba_Hybrid_Degree_Noise_RandomWalk_NodeMulti
+    8. Mamba_NodeGCN
+2. rank learnable
+3. loss balance
 
 
 
