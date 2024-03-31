@@ -346,7 +346,6 @@ class GPSLayer(nn.Module):
             elif global_model_type.split("_")[-1] == "NodeMulti":
 
                 num_experts = cfg.model.num_experts
-                self.random_walk_length = cfg.model.random_walk_length
                 self.self_attn = Mamba(
                     d_model=dim_h,  # Model dimension d_model
                     d_state=16,  # SSM state expansion factor
@@ -1878,7 +1877,7 @@ class GPSLayer(nn.Module):
                     walks = []
                     for i in range(10):
                         walk = random_walk(
-                            row, col, start, walk_length=self.random_walk_length
+                            row, col, start, walk_length=10
                         )
                         walk = torch.flip(walk, [-1])
                         walks.append(walk)
@@ -2015,7 +2014,7 @@ class GPSLayer(nn.Module):
                     walk_attr_list = []
                     for i in range(10):
                         walk = random_walk(
-                            row, col, start, walk_length=self.random_walk_length
+                            row, col, start, walk_length=10
                         )
 
                         h_walk = h[walk]
@@ -2091,7 +2090,7 @@ class GPSLayer(nn.Module):
 
                 for i in range(10):
                     walk = random_walk(
-                        row, col, start, walk_length=self.random_walk_length
+                        row, col, start, walk_length=10
                     )
 
                     h_walk = h[walk]
