@@ -11,14 +11,14 @@ dataset:
   task_type: classification_multilabel
   transductive: False
   node_encoder: True
-  node_encoder_name: Atom+LapPE
+  node_encoder_name: LinearNode
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: Bond
   edge_encoder_bn: False
   split_mode: standard
 posenc_LapPE:
-  enable: True
+  enable: False
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -40,7 +40,7 @@ model:
   random_walk_length: 10
 gt:
   # layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise_RandomWalk_NodeLevel
-  layer_type: CustomGatedGCN+Mamba_RandomGraph_NodeMulti
+  # layer_type: CustomGatedGCN+Mamba
   # layer_type: CustomGatedGCN+"Mamba_Degree_Noise_Average_Multi
   # layer_type: CustomGatedGCN+Mamba_Random_Average_Multi
   # layer_type: CustomGatedGCN+Mamba_Degree_Noise_WeightedSum_Multi

@@ -6,12 +6,11 @@ This repo is forked from Graph-mamba paper, for reproduction use.
 ```
 conda create -n graph-mamba python==3.9
 conda activate graph-mamba
-pip install torch==1.13.0
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.1+cu118.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
-pip install torch_geometric==2.0.4
+pip install torch-geometric[graphgym]
 
-pip install transformers==4.36.2
-pip install torchmetrics==0.10.3
+pip install torchmetrics==0.9 (important)
 pip install openbabel-wheel
 pip install fsspec 
 pip install rdkit
@@ -20,12 +19,13 @@ pip install performer-pytorch
 pip install tensorboardX
 pip install ogb
 pip install wandb
+pip install deepspeed
+pip install torch_ppr
 
 pip install causal-conv1d==1.0.2
 pip install mamba-ssm==1.0.1
-
-Note: need to modify based on your own cuda version
 ```
+Note: After cloning from original repo, need to modify: Device, Config
 
 ## Experiment
 ### Step 1: Share Wandb
