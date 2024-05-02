@@ -3,16 +3,15 @@ from yacs.config import CfgNode as CN
 
 
 def set_cfg_preprocess(cfg):
-    """Extend configuration with preprocessing options
-    """
+    """Extend configuration with preprocessing options"""
 
-    cfg.prep = CN()
+    cfg.prep = CN(new_allowed=True)
 
     # Argument group for adding expander edges
 
     # if it's enabled expander edges would be available by e.g. data.expander_edges
     cfg.prep.exp = False
-    cfg.prep.exp_algorithm = 'Random-d' #Other option is 'Hamiltonian'
+    cfg.prep.exp_algorithm = "Random-d"  # Other option is 'Hamiltonian'
     cfg.prep.use_exp_edges = True
     cfg.prep.exp_deg = 5
     cfg.prep.exp_max_num_iters = 100
@@ -24,11 +23,9 @@ def set_cfg_preprocess(cfg):
     cfg.prep.train_percent = 0.6
     cfg.prep.layer_edge_indices_dir = None
 
-
-
     # Argument group for adding node distances
     cfg.prep.dist_enable = False
     cfg.prep.dist_cutoff = 510
 
 
-register_config('preprocess', set_cfg_preprocess)
+register_config("preprocess", set_cfg_preprocess)

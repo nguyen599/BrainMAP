@@ -181,6 +181,7 @@ if __name__ == "__main__":
                 cfg.pretrained.freeze_main,
                 cfg.pretrained.reset_prediction_head,
             )
+
         optimizer = create_optimizer(model.parameters(), new_optimizer_config(cfg))
         scheduler = create_scheduler(optimizer, new_scheduler_config(cfg))
         # Print model info

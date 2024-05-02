@@ -25,7 +25,7 @@ pip install torch_ppr
 pip install causal-conv1d==1.0.2
 pip install mamba-ssm==1.0.1
 ```
-Note: After cloning from original repo, need to modify: Device, Config
+Note: After cloning from original repo, need to modify: Device, Config of graphgym
 
 ## Experiment
 ### Step 1: Share Wandb

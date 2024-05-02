@@ -2,7 +2,7 @@ from torch_geometric.graphgym.register import register_config
 from yacs.config import CfgNode as CN
 
 
-@register_config('cfg_gt')
+@register_config("cfg_gt")
 def set_cfg_gt(cfg):
     """Configuration for Graph Transformer-style models, e.g.:
     - Spectral Attention Network (SAN) Graph Transformer.
@@ -14,7 +14,7 @@ def set_cfg_gt(cfg):
     cfg.gt = CN()
 
     # Type of Graph Transformer layer to use
-    cfg.gt.layer_type = 'SANLayer'
+    cfg.gt.layer_type = "SANLayer"
 
     # Number of Transformer layers in the model
     cfg.gt.layers = 3
@@ -32,7 +32,7 @@ def set_cfg_gt(cfg):
     cfg.gt.full_graph = True
 
     # Type of extra edges used for transformer
-    cfg.gt.secondary_edges = 'full_graph'
+    cfg.gt.secondary_edges = "full_graph"
 
     # SAN real vs fake edge attention weighting coefficient
     cfg.gt.gamma = 1e-5
@@ -54,7 +54,7 @@ def set_cfg_gt(cfg):
 
     cfg.gt.residual = True
 
-    cfg.gt.activation = 'relu'
+    cfg.gt.activation = "relu"
 
     # BigBird model/GPS-BigBird layer.
     cfg.gt.bigbird = CN()
@@ -78,3 +78,5 @@ def set_cfg_gt(cfg):
     cfg.gt.bigbird.block_size = 3
 
     cfg.gt.bigbird.layer_norm_eps = 1e-6
+
+    cfg.model.learn_rank = False

@@ -3,7 +3,7 @@ metric_best: accuracy
 wandb:
   use: True
   project: physics3
-  entity: expand-gnns
+  entity: vjd5zr
 dataset:
   format: PyG-Coauthor
   name: physics
@@ -18,7 +18,7 @@ dataset:
   edge_encoder_bn: False
   split: [0.6, 0.2, 0.2]
 prep:
-  exp: True
+  exp: False #  TRue
   exp_deg: 3 # Algorithm will use 3 permutations or 3 Hamiltonian cycles, so actual degree will be 6
   add_edge_index: True # Set True if you want to add real edges beside expander edges
   num_virt_node: 0 # Set True if you want to add global node connections beside expander edges
@@ -36,6 +36,7 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
+  sampler: neighbor
   batch_size: 32
   eval_period: 1
   ckpt_period: 100

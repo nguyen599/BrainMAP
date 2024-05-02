@@ -2,8 +2,8 @@ out_dir: results
 metric_best: accuracy
 wandb:
   use: True
-  project: cs3
-  entity: expand-gnns
+  project: arxiv #graph-mamba
+  entity: vjd5zr
 dataset:
   format: PyG-Coauthor
   name: cs
@@ -35,6 +35,7 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
+  # sampler: neighbor
   batch_size: 32
   eval_period: 1
   ckpt_period: 100

@@ -159,4 +159,13 @@ dmypy.json
 # vim edit buffer
 *.swp
 
+# test and command
+*.sh
+*.md
+*.txt
+test.py
+
+# files
+*.gz
+*.pt
 

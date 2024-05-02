@@ -22,6 +22,8 @@ from torch_geometric.datasets import (
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.loader import load_pyg, load_ogb, set_dataset_attr
 from torch_geometric.graphgym.register import register_loader
+from torch_geometric.data import Batch
+from torch_geometric.data import Data, InMemoryDataset, Dataset
 
 from graphgps.loader.planetoid import Planetoid
 from graphgps.loader.dataset.aqsol_molecules import AQSOL
@@ -30,6 +32,8 @@ from graphgps.loader.dataset.malnet_tiny import MalNetTiny
 from graphgps.loader.dataset.voc_superpixels import VOCSuperpixels
 from graphgps.loader.split_generator import prepare_splits, set_dataset_splits
 from graphgps.transform.posenc_stats import compute_posenc_stats
+from graphgps.transform.centrality import compute_centrality
+from graphgps.transform.neighbors import compute_neighbors
 from graphgps.transform.transforms import (
     pre_transform_in_memory,
     generate_splits,  # not the same as split_generator above.
@@ -47,6 +51,24 @@ from graphgps.transform.dist_transforms import (
     effective_resistance_embedding,
     effective_resistances_from_embedding,
 )
+
+
+def set_node_index(dataset):
+    """
+    set index for each node
+    """
+    dataset.data["node_id"] = torch.arange(dataset.data.num_nodes)
+    dataset.slices["node_id"] = dataset.slices["x"]
+    return dataset
+
+
+def set_graph_index(dataset):
+    """
+    set index for each graph
+    """
+    dataset.data["graph_id"] = torch.arange(dataset.data.y.shape[0], dtype=torch.long)
+    dataset.slices["graph_id"] = dataset.slices["y"]
+    return dataset
 
 
 def log_loaded_dataset(dataset, format, name):
@@ -200,6 +222,9 @@ def load_dataset_master(format, name, dataset_dir):
     elif format == "PyG":
         dataset = load_pyg(name, dataset_dir)
 
+    elif format == "Brain":
+        dataset = preformat_Brain(dataset_dir, name)
+
     elif format == "OGB":
         if name.startswith("ogbg"):
             dataset = preformat_OGB_Graph(dataset_dir, name.replace("_", "-"))
@@ -284,6 +309,48 @@ def load_dataset_master(format, name, dataset_dir):
         )
         logging.info(f"Done! Took {timestr}")
 
+    if cfg.prep.get("centrality", False):
+        centrality_types = cfg.prep.centrality_types.split("+")
+
+        start = time.perf_counter()
+        logging.info(f"Precomputing centrality statistics for all graphs...")
+        is_undirected = all(d.is_undirected() for d in dataset[:10])
+        pre_transform_in_memory(
+            dataset,
+            partial(
+                compute_centrality,
+                centrality_types=centrality_types,
+                is_undirected=is_undirected,
+                cfg=cfg,
+            ),
+            show_progress=True,
+        )
+        elapsed = time.perf_counter() - start
+        timestr = (
+            time.strftime("%H:%M:%S", time.gmtime(elapsed)) + f"{elapsed:.2f}"[-3:]
+        )
+        logging.info(f"Done! Took {timestr}")
+    if cfg.prep.get("neighbors", False):
+        neighbor_hops = cfg.prep.neighbor_hops
+
+        start = time.perf_counter()
+        logging.info(f"Precomputing neighbor embeddings for all graphs...")
+        is_undirected = all(d.is_undirected() for d in dataset[:10])
+        pre_transform_in_memory(
+            dataset,
+            partial(
+                compute_neighbors,
+                neighbor_hops=neighbor_hops,
+                is_undirected=is_undirected,
+                cfg=cfg,
+            ),
+            show_progress=True,
+        )
+        elapsed = time.perf_counter() - start
+        timestr = (
+            time.strftime("%H:%M:%S", time.gmtime(elapsed)) + f"{elapsed:.2f}"[-3:]
+        )
+        logging.info(f"Done! Took {timestr}")
     # Other preprocessings:
     # adding expander edges:
     if cfg.prep.exp:
@@ -381,9 +448,21 @@ def load_dataset_master(format, name, dataset_dir):
     if hasattr(dataset, "split_idxs"):
         set_dataset_splits(dataset, dataset.split_idxs)
         delattr(dataset, "split_idxs")
-
     # Verify or generate dataset train/val/test splits
     prepare_splits(dataset)
+    # dataset = Data(
+    #     x=dataset.data.x,
+    #     edge_index=dataset.data.edge_index,
+    #     y=dataset.data.y,
+    #     train_mask=dataset.data.train_mask,
+    #     val_mask=dataset.data.val_mask,
+    #     test_mask=dataset.data.test_mask,
+    # )
+    # dataset = CustomDataset(dataset)
+    if cfg.model.get("node_index", False):
+        dataset = set_node_index(dataset)
+    if cfg.model.get("graph_index", False):
+        dataset = set_graph_index(dataset)
 
     # Precompute in-degree histogram if needed for PNAConv.
     if cfg.gt.layer_type.startswith("PNAConv") and len(cfg.gt.pna_degrees) == 0:
@@ -391,6 +470,20 @@ def load_dataset_master(format, name, dataset_dir):
             dataset[dataset.data["train_graph_index"]]
         )
     return dataset
+
+
+class CustomDataset(InMemoryDataset):
+    def __init__(self, data):
+        super(CustomDataset, self).__init__()
+        self.data = data
+        self._data = data
+
+    def __len__(self):
+        # 返回数据集的长度为1
+        return 1
+
+    def len(self) -> int:
+        return 1
 
 
 def compute_indegree_histogram(dataset):
@@ -779,6 +872,28 @@ def preformat_VOCSuperpixels(dataset_dir, name, slic_compactness):
             for split in ["train", "val", "test"]
         ]
     )
+    return dataset
+
+
+def preformat_Brain(dataset_dir, name):
+    """Load and preformat Brain dataset.
+
+    Args:
+        dataset_dir: path where to store the cached dataset
+        name: name of the specific dataset in the Brain class
+
+    Returns:
+        PyG dataset object
+    """
+    try:
+        from graphgps.loader.dataset.brain import BrainDataset
+    except Exception as e:
+        logging.error("ERROR: Failed to import BrainDataset.")
+        raise e
+
+    dataset = BrainDataset(dataset_dir, name)
+    # s_dict = dataset.get_idx_split()
+    # dataset.split_idxs = [s_dict[s] for s in ["train", "val", "test"]]
     return dataset
 
 

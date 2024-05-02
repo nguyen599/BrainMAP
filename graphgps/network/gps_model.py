@@ -1,4 +1,5 @@
 import torch
+import torch_geometric
 import torch_geometric.graphgym.register as register
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.models.gnn import GNNPreMP
@@ -68,6 +69,7 @@ class FeatureEncoder(torch.nn.Module):
     def forward(self, batch):
         for module in self.children():
             batch = module(batch)
+
         return batch
 
 
@@ -114,6 +116,31 @@ class GPSModel(torch.nn.Module):
         self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
 
     def forward(self, batch):
+        if cfg.model.learn_rank and self.training:
+            batch = self.encoder(batch)
+            batch_clone = batch.clone()
+            rank_scores = []
+            rank_scores_opt = []
+            for i, layer in enumerate(self.layers):
+                batch, rank_score_opt = layer(batch, True)
+                batch_clone, rank_score = layer(batch_clone, False)
+                rank_scores.append(rank_score)
+                rank_scores_opt.append(rank_score_opt)
+            rank_scores = torch.stack(rank_scores, dim=0)
+            rank_scores_opt = torch.stack(rank_scores_opt, dim=0)
+            return (
+                self.post_mp(batch),
+                self.post_mp(batch_clone),
+                rank_scores_opt,
+                rank_scores,
+            )
+
+        if cfg.prep.get("neighbors", False):
+            batch = self.encoder(batch)
+            # batch = self.pre_mp(batch)
+            batch = self.layers(batch)
+            return self.post_mp(batch)
+
         for module in self.children():
             batch = module(batch)
         return batch
