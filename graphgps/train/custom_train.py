@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 import numpy as np
@@ -19,7 +20,16 @@ from deepspeed.profiling.flops_profiler import FlopsProfiler
 
 # from torch.autograd import profiler
 from torch.profiler import profile, record_function, ProfilerActivity
-from captum.attr import IntegratedGradients
+from captum.attr import (
+    IntegratedGradients,
+    DeepLiftShap,
+    DeepLift,
+    ShapleyValueSampling,
+    ShapleyValues,
+    Lime,
+)
+from torch_geometric.explain import Explainer, GNNExplainer
+
 
 from torch_geometric.nn import to_captum_model, to_captum_input
 import torch_geometric
@@ -94,69 +104,140 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
             prof.start_profile()
         batch.split = "train"
         batch.to(torch.device(cfg.device))
-        if cfg.model.learn_rank:
-            (batch_1, batch_2, rank_scores_opt, rank_scores) = model(batch)
+        if epoch == 50 and cfg.model.get("gnn_explainer", False):
+            batch_ = batch.clone().to(torch.device(cfg.device))
 
-            if epoch < cfg.model.learn_rank_start_epoch:
-                learn_rank = False
-            else:
-                learn_rank = True
-            loss, true, pred_score = learnrank_cross_entropy(
-                batch_1, batch_2, batch, rank_scores_opt, rank_scores, learn_rank
+            class ExpModel(torch.nn.Module):
+                def __init__(self, model):
+                    super(ExpModel, self).__init__()
+                    self.model = model
+
+                def forward(self, x, edge_index, edge_attr1, y1, batch1, ptr1):
+                    batch_model = torch_geometric.data.Batch(
+                        x=x,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr1,
+                        y=y1,
+                        batch=batch1,
+                        ptr=ptr1,
+                        split=batch_.split,
+                    )
+                    output = self.model(batch_model)
+                    # pdb.set_trace()
+                    return output[0]
+
+            custom_forward = ExpModel(model)
+
+            explainer = Explainer(
+                model=custom_forward,
+                algorithm=GNNExplainer(epochs=200),
+                explanation_type="model",
+                node_mask_type="object",
+                edge_mask_type="object",
+                model_config=dict(
+                    mode="multiclass_classification",
+                    task_level="graph",
+                    return_type="probs",
+                ),
             )
-            _true = true
-            _pred = pred_score
+            node_index = 0
+            for i in range(5):
+                try:
+                    if batch_[i].y == 3:
+                        explanation = explainer(
+                            batch_[i].x,
+                            batch_[i].edge_index,
+                            # index=node_index,
+                            edge_attr1=batch_[i].edge_attr,
+                            y1=batch_[i].y,
+                            batch1=batch_.batch[:360],
+                            ptr1=batch_.ptr[:2],
+                        )
+                        print("Explanation:", explanation)
+                        if (
+                            cfg.model.type == "GPSModel"
+                            and cfg.gt.layer_type
+                            == "CustomGatedGCN+Mamba_Hybrid_Degree_Noise"
+                        ):
+                            file = f"explanations/explanation_{batch_.graph_id[i]}.pt"
+                        else:
+                            file = (
+                                f"explanations/explanationgcn_{batch_.graph_id[i]}.pt"
+                            )
+                        torch.save(
+                            [
+                                explanation,
+                                batch_.graph_id[i],
+                                batch_[i].y,
+                            ],
+                            file,
+                        )
+                except:
+                    continue
         else:
-            test = batch.x.clone()
-            pred, true = model(batch)
-            if torch.isnan(pred).any():
-                pdb.set_trace()
-            if cfg.dataset.name == "ogbg-code2":
-                loss, pred_score = subtoken_cross_entropy(pred, true)
+            if cfg.model.learn_rank:
+                (batch_1, batch_2, rank_scores_opt, rank_scores) = model(batch)
+
+                if epoch < cfg.model.learn_rank_start_epoch:
+                    learn_rank = False
+                else:
+                    learn_rank = True
+                loss, true, pred_score = learnrank_cross_entropy(
+                    batch_1, batch_2, batch, rank_scores_opt, rank_scores, learn_rank
+                )
                 _true = true
                 _pred = pred_score
-            elif cfg.dataset.name == "ogbn-arxiv":
-                split_idx = loader.dataset.split_idx["train"].to(
-                    torch.device(cfg.device)
-                )
-                loss, pred_score = arxiv_cross_entropy(pred, true, split_idx)
-                _true = true[split_idx].detach().to("cpu", non_blocking=True)
-                _pred = pred_score.detach().to("cpu", non_blocking=True)
             else:
-                loss, pred_score = compute_loss(pred, true)
-                _true = true.detach().to("cpu", non_blocking=True)
-                _pred = pred_score.detach().to("cpu", non_blocking=True)
+                test = batch.x.clone()
+                pred, true = model(batch)
+                if torch.isnan(pred).any():
+                    pdb.set_trace()
+                if cfg.dataset.name == "ogbg-code2":
+                    loss, pred_score = subtoken_cross_entropy(pred, true)
+                    _true = true
+                    _pred = pred_score
+                elif cfg.dataset.name == "ogbn-arxiv":
+                    split_idx = loader.dataset.split_idx["train"].to(
+                        torch.device(cfg.device)
+                    )
+                    loss, pred_score = arxiv_cross_entropy(pred, true, split_idx)
+                    _true = true[split_idx].detach().to("cpu", non_blocking=True)
+                    _pred = pred_score.detach().to("cpu", non_blocking=True)
+                else:
+                    loss, pred_score = compute_loss(pred, true)
+                    _true = true.detach().to("cpu", non_blocking=True)
+                    _pred = pred_score.detach().to("cpu", non_blocking=True)
 
-        if if_flop:
-            prof.stop_profile()
-            flops = prof.get_total_flops()
-            flops_s = flops / 1000000000.0
-            total_flop_s += flops_s
-            sample_count += len(torch.unique(batch.batch))
-            params = prof.get_total_params()
-            prof.end_profile()
-            if if_select:
-                total_node += batch.x.size(0)
+            if if_flop:
+                prof.stop_profile()
+                flops = prof.get_total_flops()
+                flops_s = flops / 1000000000.0
+                total_flop_s += flops_s
+                sample_count += len(torch.unique(batch.batch))
+                params = prof.get_total_params()
+                prof.end_profile()
+                if if_select:
+                    total_node += batch.x.size(0)
 
-        loss = loss.clamp(-1e6, 1e6)
-        loss.backward()
+            loss = loss.clamp(-1e6, 1e6)
+            loss.backward()
 
-        # Parameters update after accumulating gradients for given num. batches.
-        if ((iter + 1) % batch_accumulation == 0) or (iter + 1 == len(loader)):
-            if cfg.optim.clip_grad_norm:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            optimizer.zero_grad()
-        logger.update_stats(
-            true=_true,
-            pred=_pred,
-            loss=loss.detach().cpu().item(),
-            lr=scheduler.get_last_lr()[0],
-            time_used=time.time() - time_start,
-            params=cfg.params,
-            dataset_name=cfg.dataset.name,
-        )
-        time_start = time.time()
+            # Parameters update after accumulating gradients for given num. batches.
+            if ((iter + 1) % batch_accumulation == 0) or (iter + 1 == len(loader)):
+                if cfg.optim.clip_grad_norm:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad()
+            logger.update_stats(
+                true=_true,
+                pred=_pred,
+                loss=loss.detach().cpu().item(),
+                lr=scheduler.get_last_lr()[0],
+                time_used=time.time() - time_start,
+                params=cfg.params,
+                dataset_name=cfg.dataset.name,
+            )
+            time_start = time.time()
 
     if if_flop:
         print("################ Print flop")
@@ -180,40 +261,123 @@ def eval_epoch(logger, loader, model, split="val", epoch=0):
     for batch in loader:
         batch.split = split
         batch.to(torch.device(cfg.device))
-        if True:
+        if cfg.model.get("captum", False):
             batch_ = batch.clone()
             pred, true = model(batch)
             extra_stats = {}
 
-            def custom_forward(x, edge_index, edge_attr, y, batch, ptr):
-                batch_model = torch_geometric.data.Batch(
-                    x=x[0],
-                    edge_index=edge_index[0],
-                    edge_attr=edge_attr[0],
-                    y=y[0],
-                    batch=batch[0],
-                    ptr=ptr[0],
-                )
-                output = model(batch_model)
-                return output[0]
+            class CustomModel(torch.nn.Module):
+                def __init__(self, model):
+                    super(CustomModel, self).__init__()
+                    self.model = model
 
-            if epoch >= 10 and cfg.model.get("captum", False):
-                ig = IntegratedGradients(custom_forward)
-                attributions, delta = ig.attribute(
-                    batch_.x.unsqueeze(0),
-                    additional_forward_args=(
-                        batch_.edge_index.unsqueeze(0),
-                        batch_.edge_attr.unsqueeze(0),
-                        batch_.y.unsqueeze(0),
-                        batch_.batch.unsqueeze(0),
-                        batch_.ptr.unsqueeze(0),
-                    ),
-                    target=0,
-                    return_convergence_delta=True,
-                    n_steps=200,
+                def forward(self, x, edge_index, edge_attr, y, batch, ptr):
+                    batch_model = torch_geometric.data.Batch(
+                        x=x[0].reshape(-1, batch_.x.size(-1)),
+                        edge_index=edge_index[0],
+                        edge_attr=edge_attr[0],
+                        y=y[0],
+                        batch=batch[0],
+                        ptr=ptr[0],
+                        split=batch_.split,
+                    )
+                    output = self.model(batch_model)
+                    # pdb.set_trace()
+                    return output[0]
+
+            custom_forward = CustomModel(model)
+
+            if epoch == 100 and cfg.model.get("captum", False):
+                ig = Lime(
+                    custom_forward,
                 )
-                print("IG Attributions:", attributions)
-                print("Convergence Delta:", delta)
+                for i in range(5):
+                    if batch_[i].y == 3:
+                        attributions = ig.attribute(
+                            batch_[i].x.flatten().unsqueeze(0),
+                            # baselines=batch_.x.unsqueeze(0) * 0,
+                            additional_forward_args=(
+                                batch_[i].edge_index.unsqueeze(0),
+                                batch_[i].edge_attr.unsqueeze(0),
+                                batch_[i].y.unsqueeze(0),
+                                batch_.batch[:360].unsqueeze(0),
+                                batch_.ptr[:2].unsqueeze(0),
+                            ),
+                            target=0,
+                            # return_convergence_delta=True,
+                            # n_samples=200,
+                        )
+                        print("IG Attributions:", attributions)
+                        # print("Convergence Delta:", delta)
+                        if not os.path.exists("attributions"):
+                            os.makedirs("attributions")
+                        torch.save(
+                            [
+                                attributions,
+                                batch_.graph_id[i],
+                                batch_[i].y,
+                            ],
+                            f"attributions/attributions_{batch_.graph_id[i]}.pt",
+                        )
+
+        elif epoch == 1000 and cfg.model.get("gnn_explainer", False):
+            batch_ = batch.clone()
+            pred, true = model(batch)
+            extra_stats = {}
+
+            class ExpModel(torch.nn.Module):
+                def __init__(self, model):
+                    super(ExpModel, self).__init__()
+                    self.model = model
+
+                def forward(self, x, edge_index, edge_attr1, y1, batch1, ptr1):
+                    x.requires_grad = True
+                    batch_model = torch_geometric.data.Batch(
+                        x=x,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr1,
+                        y=y1,
+                        batch=batch1,
+                        ptr=ptr1,
+                        split=batch_.split,
+                    )
+                    output = self.model(batch_model)
+                    # pdb.set_trace()
+                    return output[0]
+
+            custom_forward = ExpModel(model)
+
+            explainer = Explainer(
+                model=custom_forward,
+                algorithm=GNNExplainer(epochs=200),
+                explanation_type="model",
+                node_mask_type="object",
+                edge_mask_type="object",
+                model_config=dict(
+                    mode="multiclass_classification",
+                    task_level="graph",
+                    return_type="probs",
+                ),
+            )
+            node_index = 0
+            i = 0
+            explanation = explainer(
+                batch_[i].x,
+                batch_[i].edge_index,
+                # index=node_index,
+                edge_attr1=batch_[i].edge_attr,
+                y1=batch_[i].y,
+                batch1=batch_.batch[:360],
+                ptr1=batch_.ptr[:2],
+            )
+            print("Explanation:", explanation)
+        elif cfg.model.get("rtr_type", None) is not None:
+            cfg.model["rtr_now"] = False
+            if epoch == cfg.model.get("rtr_epoch", 100):
+                cfg.model["rtr_now"] = True
+            pred, true = model(batch)
+            extra_stats = {}
+
         elif cfg.gnn.head == "inductive_edge":
             pred, true, extra_stats = model(batch)
         else:
@@ -279,7 +443,6 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
             entity=cfg.wandb.entity,
             project=cfg.wandb.project,
             name=wandb_name,
-            group=cfg.wandb.group,
             settings=wandb.Settings(code_dir="."),
         )
         run.config.update(cfg_to_dict(cfg))
@@ -290,6 +453,8 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
     perf = [[] for _ in range(num_splits)]
 
     with torch.autograd.detect_anomaly():
+        attributions_all = []
+        graph_id_all = []
         for cur_epoch in range(start_epoch, cfg.optim.max_epoch):
             start_time = time.perf_counter()
             train_epoch(
@@ -394,6 +559,7 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
                                 f"    {gtl.__class__.__name__} {li}: "
                                 f"gamma={gtl.attention.gamma.item()}"
                             )
+
     logging.info(f"Avg time per epoch: {np.mean(full_epoch_times):.2f}s")
     logging.info(f"Total train loop time: {np.sum(full_epoch_times) / 3600:.2f}h")
     for logger in loggers:

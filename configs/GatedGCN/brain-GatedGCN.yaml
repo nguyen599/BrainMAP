@@ -22,11 +22,17 @@ train:
   mode: custom
   batch_size: 128 
   eval_period: 1
-  ckpt_period: 100
+  ckpt_period: 60
+  ckpt_period: 60
+  enable_ckpt: True
+  # auto_resume: True
+  # epoch_resume: 59
 model:
   type: custom_gnn
   loss_fun: cross_entropy
   graph_pooling: mean
+  graph_index: True
+  gnn_explainer: False
 gnn:
   # head: inductive_node
   layers_pre_mp: 0

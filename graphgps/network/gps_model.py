@@ -9,6 +9,8 @@ from graphgps.encoder.ER_edge_encoder import EREdgeEncoder
 
 from graphgps.layer.gps_layer import GPSLayer
 
+import os
+
 import pdb
 
 
@@ -135,10 +137,19 @@ class GPSModel(torch.nn.Module):
                 rank_scores,
             )
 
-        if cfg.prep.get("neighbors", False):
+        if cfg.model.get("rtr_now", False):
             batch = self.encoder(batch)
-            # batch = self.pre_mp(batch)
-            batch = self.layers(batch)
+            rtr_reprs = []
+            for i, layer in enumerate(self.layers):
+                batch, rtr_repr = layer(batch)
+                rtr_reprs.append(rtr_repr)
+            rtr_repr = torch.stack(rtr_reprs, dim=0)
+            if os.path.exists("rtr_repr") is False:
+                os.mkdir("rtr_repr")
+            torch.save(
+                [rtr_repr, batch.graph_id, batch.ptr],
+                f"rtr_repr/rtr_rpre_{batch.graph_id[0]}.pt",
+            )
             return self.post_mp(batch)
 
         for module in self.children():

@@ -1,3 +1,42 @@
+# 5.7
+## TODO
+### Bad results
+1. reason: 
+   1. noisy
+      1. co-train remove
+   2. some high score
+   3. metric bad 
+      1. hit 10
+      2. weighted 
+   4. change explain
+
+
+
+# 5.6
+## Review
+### What has been done
+1. MoE: different input, localagg
+2. Interpret: Lime, hidden space
+
+
+
+# 5.4
+## TODO
+### Interpret
+1. what posthoc
+2. how to use them
+3. how to apply them to me
+
+## Problem
+### Interpret
+1. 一个batch输入不好
+   1. transform the input as standard input
+
+
+
+
+
+
 # 5.2
 ## Interpretability
 ### Simple

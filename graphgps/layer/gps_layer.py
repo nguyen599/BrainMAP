@@ -389,8 +389,10 @@ class GPSLayer(nn.Module):
                     d_state=16,  # SSM state expansion factor
                     d_conv=4,  # Local convolution width
                     expand=1,  # Block expansion factor
+                    use_fast_path=False,
                 )
                 self.calculate_rank_score = nn.Linear(self.dim_h, 1)
+
         else:
             raise ValueError(
                 f"Unsupported global x-former model: " f"{global_model_type}"
@@ -476,6 +478,19 @@ class GPSLayer(nn.Module):
                     h_ind_perm_reverse = torch.argsort(h_ind_perm)
 
                     h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
+                    if cfg.model.get("mamba_interpret", False):
+                        h_attn, interpret_score = self.self_attn(
+                            h_dense, interpret=True
+                        )
+                        h_attn = h_attn[mask][h_ind_perm_reverse]
+                        interpret_score = interpret_score.unsqueeze(-1)[mask][
+                            h_ind_perm_reverse
+                        ]
+                        torch.save(
+                            [interpret_score, h_attn, batch.y],
+                            f"explanations/mamba/interpret_score_{batch.graph_id[0]}.pt",
+                        )
+
                 else:
                     mamba_arr = []
                     deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
@@ -568,6 +583,9 @@ class GPSLayer(nn.Module):
                     pdb.set_trace()
 
             h_attn = self.dropout_attn(h_attn)
+            if cfg.model.get("rtr_type", None) == "mamba":
+                rtr_repr = h_attn
+
             h_attn = h_in1 + h_attn  # Residual connection.
             if self.layer_norm:
                 h_attn = self.norm1_attn(h_attn, batch.batch)
@@ -584,8 +602,10 @@ class GPSLayer(nn.Module):
         if self.batch_norm:
             h = self.norm2(h)
         batch.x = h
-        if cfg.model.learn_rank and self.training:
+        if cfg.model.get("learn_rank", False) and self.training:
             return batch, rank_score
+        if cfg.model.get("rtr_now", False):
+            return batch, rtr_repr
         return batch
 
     def _sa_block(self, x, attn_mask, key_padding_mask):
