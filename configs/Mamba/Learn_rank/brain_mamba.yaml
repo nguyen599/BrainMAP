@@ -40,13 +40,13 @@ train:
   eval_period: 1
   ckpt_period: 60
   enable_ckpt: False
-  auto_resume: True
+  auto_resume: False
   epoch_resume: 59
 model:
   type: GPSModel
   loss_fun: cross_entropy
   graph_pooling: mean
-  num_experts: 6
+  num_experts: 4
   learn_rank: False
   learn_rank_start_epoch: 0 
   graph_index: True
@@ -54,9 +54,9 @@ model:
   # rtr_epoch: 100
   captum: False
   gnn_explainer: False
-  mamba_interpret: True
+  mamba_interpret: False
 gt:
-  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
+  layer_type: CustomGatedGCN+Mamba_Multihead_Repeat_MoE
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0

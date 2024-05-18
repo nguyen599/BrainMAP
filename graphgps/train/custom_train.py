@@ -190,8 +190,6 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
             else:
                 test = batch.x.clone()
                 pred, true = model(batch)
-                if torch.isnan(pred).any():
-                    pdb.set_trace()
                 if cfg.dataset.name == "ogbg-code2":
                     loss, pred_score = subtoken_cross_entropy(pred, true)
                     _true = true

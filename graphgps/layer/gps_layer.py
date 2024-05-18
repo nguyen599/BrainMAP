@@ -369,6 +369,28 @@ class GPSLayer(nn.Module):
 
                 self.top_k_gate = NoisyTopkRouter(self.dim_h, num_experts, 2)
 
+            elif global_model_type.split("_")[-1] == "MoE":
+                num_experts = cfg.model.num_experts
+
+                self.self_attn = nn.ParameterList(
+                    [
+                        Mamba(
+                            d_model=self.dim_h,  # Model dimension d_model
+                            d_state=16,  # SSM state expansion factor
+                            d_conv=4,  # Local convolution width
+                            expand=1,  # Block expansion factor
+                        )
+                        for i in range(2 * num_experts)
+                    ]
+                )
+                self.multihead_linear = nn.Linear(self.dim_h * 2, self.dim_h)
+
+                self.self_attn_moe = nn.ParameterList(
+                    [self.self_attn[i : i + 2] for i in range(0, 2 * num_experts, 2)]
+                )
+
+                self.moe_linear = nn.Linear(self.dim_h, num_experts)
+
             elif global_model_type.split("_")[-1] == "SmallConv":
                 self.self_attn = Mamba(
                     d_model=self.dim_h,  # Model dimension d_model
@@ -532,6 +554,56 @@ class GPSLayer(nn.Module):
                     h_ind_perm_reverse = torch.argsort(h_ind_perm)
 
                     h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
+
+            elif self.global_model_type == "Mamba_Multihead_Repeat_MoE":
+                moe_score = self.moe_linear(h)
+
+                def multihead_attn(h_dense, self_attn, mask, h_ind_perm_reverse):
+                    # 1. whether each head
+                    h_attns = []
+                    for i in range(2):
+                        h_attn = self_attn[i](h_dense)[:, : h_dense.shape[1] // 2][
+                            mask
+                        ][h_ind_perm_reverse]
+                        h_attns.append(h_attn)
+                    h_attn = torch.cat(h_attns, dim=-1)
+                    h_attn = self.multihead_linear(h_attn)
+                    return h_attn
+
+                deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
+
+                deg_noise = torch.rand_like(deg).to(deg.device)
+                h_ind_perm = lexsort([deg + deg_noise, batch.batch])
+
+                h_dense, mask = to_dense_batch(h[h_ind_perm], batch.batch[h_ind_perm])
+                h_dense_repeat = torch.cat([h_dense, h_dense.flip([1])], dim=1)
+                h_ind_perm_reverse = torch.argsort(h_ind_perm)
+
+                h_attn = []
+                for i in range(len(self.self_attn_moe)):
+                    h_attn.append(
+                        multihead_attn(
+                            h_dense_repeat,
+                            self.self_attn_moe[i],
+                            mask,
+                            h_ind_perm_reverse,
+                        )
+                    )
+                # moe router
+                # h_attn = torch.stack(h_attn, dim=1)
+                # allocate with moe_score to each expert
+                h_attn_gating = nn.Softmax(dim=-1)(moe_score)
+                # pdb.set_trace()
+                h_attn = torch.sum(  # weighted sum
+                    torch.stack(
+                        [
+                            h_attn[i] * h_attn_gating[..., [i]].expand_as(h_attn[i])
+                            for i in range(len(h_attn))
+                        ]
+                    ),
+                    dim=0,
+                )
+                # h_attn = h_attn.sum(dim=1)
 
             elif self.global_model_type == "Mamba_NAG_NodeLevel":
                 walk = [batch.x]
