@@ -9,7 +9,6 @@ import pdb
 class LinearNodeEncoder(torch.nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
-
         self.encoder = torch.nn.Linear(cfg.share.dim_in, emb_dim)
 
     def forward(self, batch):

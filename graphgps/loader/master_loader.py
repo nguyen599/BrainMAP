@@ -18,6 +18,7 @@ from torch_geometric.datasets import (
     TUDataset,
     WikipediaNetwork,
     ZINC,
+    NeuroGraphDataset,
 )
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.loader import load_pyg, load_ogb, set_dataset_attr
@@ -51,6 +52,26 @@ from graphgps.transform.dist_transforms import (
     effective_resistance_embedding,
     effective_resistances_from_embedding,
 )
+
+
+def load_hcp(name, dataset_dir):
+    r"""Load HCP dataset objects.
+
+    Args:
+        name (str): dataset name
+        dataset_dir (str): data directory
+
+    Returns: PyG dataset object
+
+    """
+    dataset_dir = osp.join(dataset_dir, name)
+    if name in ["HCPGender", "HCPTask", "HCPAge", "HCPFI", "HCPWM", "HCPActivity"]:
+        dataset = NeuroGraphDataset(
+            dataset_dir, name
+        )  # name in "HCPGender", "HCPTask", "HCPAge", "HCPFI", "HCPWM"
+    else:
+        raise ValueError(f"'{name}' not support")
+    return dataset
 
 
 def set_node_index(dataset):
@@ -224,6 +245,9 @@ def load_dataset_master(format, name, dataset_dir):
 
     elif format == "Brain":
         dataset = preformat_Brain(dataset_dir, name)
+
+    elif format == "HCP":
+        dataset = load_hcp(name, dataset_dir)
 
     elif format == "OGB":
         if name.startswith("ogbg"):

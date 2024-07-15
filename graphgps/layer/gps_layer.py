@@ -33,7 +33,7 @@ from copy import deepcopy
 
 from torch_cluster import random_walk
 from torch_ppr import personalized_page_rank, page_rank
-from ..utils import TopKRouter, NoisyTopkRouter
+from ..utils import TopKRouter, NoisyTopkRouter, Top1Router
 from .utils import (
     permute_nodes_within_identity,
     sort_rand_gpu,
@@ -166,9 +166,9 @@ class GPSLayer(nn.Module):
         self.ff_dropout1 = nn.Dropout(dropout)
         self.ff_dropout2 = nn.Dropout(dropout)
 
-        if cfg.model.learn_rank:
-            cfg.model["opt_node_rank_dict"] = {}
-            cfg.model["node_rank_dict"] = {}
+        # if cfg.model.learn_rank:
+        #     cfg.model["opt_node_rank_dict"] = {}
+        #     cfg.model["node_rank_dict"] = {}
 
     def choose_global_model(self, global_model_type):
         # Global attention transformer-style model.
@@ -296,83 +296,11 @@ class GPSLayer(nn.Module):
 
                 self.score_linear = nn.Linear(self.dim_h, self.dim_h)
 
-            elif global_model_type.split("_")[-1] == "MLPMulti":
-                num_experts = cfg.model.num_experts
-
-                self.self_attn = nn.ParameterList(
-                    [
-                        Mamba(
-                            d_model=self.dim_h,  # Model dimension d_model
-                            d_state=16,  # SSM state expansion factor
-                            d_conv=4,  # Local convolution width
-                            expand=1,  # Block expansion factor
-                        )
-                        for i in range(num_experts)
-                    ]
-                )
-
-                self.softmax = nn.Softmax(dim=-1)
-                self.gating_linear = MLP(
-                    channel_list=[self.dim_h, num_experts], dropout=self.dropout
-                )
-
-                self.gating_linear_for_gcn = GatedGCNLayer(
-                    self.dim_h, num_experts, dropout=self.dropout, residual=False
-                )
-                self.rank_linear = nn.ParameterList(
-                    [
-                        GatedGCNLayer(
-                            self.dim_h, 1, dropout=self.dropout, residual=False
-                        )
-                        for i in range(num_experts)
-                    ]
-                )
-
-                self.ranker = GatedGCNLayer(
-                    self.dim_h, num_experts, dropout=self.dropout, residual=False
-                )
-
-                self.local_agg = nn.ParameterList(
-                    [
-                        GatedGCNLayer(
-                            self.dim_h, self.dim_h, dropout=self.dropout, residual=True
-                        )
-                        for i in range(num_experts)
-                    ]
-                )
-                self.local_agg_gat = nn.ParameterList(
-                    [
-                        GATConv(
-                            in_channels=self.dim_h,
-                            out_channels=self.dim_h // self.num_heads,
-                            heads=self.num_heads,
-                            edge_dim=self.dim_h,
-                        )
-                        for i in range(num_experts)
-                    ]
-                )
-
-            elif global_model_type.split("_")[-1] == "SparseMoE":
-                num_experts = cfg.model.num_experts
-
-                self.self_attn = nn.ParameterList(
-                    [
-                        Mamba(
-                            d_model=self.dim_h,  # Model dimension d_model
-                            d_state=16,  # SSM state expansion factor
-                            d_conv=4,  # Local convolution width
-                            expand=1,  # Block expansion factor
-                        )
-                        for i in range(num_experts)
-                    ]
-                )
-
-                self.top_k_gate = NoisyTopkRouter(self.dim_h, num_experts, 2)
-
             elif global_model_type.split("_")[-1] == "MoE":
-                num_experts = cfg.model.num_experts
+                self.num_experts = cfg.model.num_experts
+                self.self_attn = None
 
-                self.self_attn = nn.ParameterList(
+                self.experts_mamba = nn.ParameterList(
                     [
                         Mamba(
                             d_model=self.dim_h,  # Model dimension d_model
@@ -380,16 +308,16 @@ class GPSLayer(nn.Module):
                             d_conv=4,  # Local convolution width
                             expand=1,  # Block expansion factor
                         )
-                        for i in range(2 * num_experts)
+                        for i in range(self.num_experts)
                     ]
                 )
-                self.multihead_linear = nn.Linear(self.dim_h * 2, self.dim_h)
+               
+                self.router = Top1Router(self.dim_h, self.num_experts)
 
-                self.self_attn_moe = nn.ParameterList(
-                    [self.self_attn[i : i + 2] for i in range(0, 2 * num_experts, 2)]
+                self.gcn_for_router = GatedGCNLayer(
+                    self.dim_h, self.dim_h, dropout=self.dropout, residual=False
                 )
 
-                self.moe_linear = nn.Linear(self.dim_h, num_experts)
 
             elif global_model_type.split("_")[-1] == "SmallConv":
                 self.self_attn = Mamba(
@@ -466,7 +394,7 @@ class GPSLayer(nn.Module):
             h_out_list.append(h_local)
 
         # Multi-head attention.
-        if self.self_attn is not None:
+        if self.self_attn or self.experts_mamba is not None:
             if self.global_model_type in [
                 "Transformer",
                 "Performer",
@@ -483,6 +411,24 @@ class GPSLayer(nn.Module):
 
             elif self.global_model_type == "Mamba":
                 h_attn = self.self_attn(h_dense)[mask]
+
+            elif self.global_model_type == "Mamba_Degree_Noise":
+                """
+                TODO:
+                1. two random seqs, the same graph as the positive pair, different graphs as the negative pair, 
+                2. input: h: [N, D], batch: [000,111,..,128128], 
+                3. input: h: [2 * N, D], batch: [000,111,..,256], 
+                """
+                deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
+                deg_noise = torch.rand_like(deg).to(deg.device)
+                h_ind_perm = lexsort([deg + deg_noise, batch.batch])
+
+                h_dense, mask = to_dense_batch(
+                    h[h_ind_perm], batch.batch[h_ind_perm]
+                )  # why still need to batch?
+                h_ind_perm_reverse = torch.argsort(h_ind_perm)
+
+                h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
 
             elif "Mamba_Hybrid_Degree_Noise" == self.global_model_type:
                 if batch.split == "train":
@@ -555,104 +501,15 @@ class GPSLayer(nn.Module):
 
                     h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
 
-            elif self.global_model_type == "Mamba_Multihead_Repeat_MoE":
-                moe_score = self.moe_linear(h)
-
-                def multihead_attn(h_dense, self_attn, mask, h_ind_perm_reverse):
-                    # 1. whether each head
-                    h_attns = []
-                    for i in range(2):
-                        h_attn = self_attn[i](h_dense)[:, : h_dense.shape[1] // 2][
-                            mask
-                        ][h_ind_perm_reverse]
-                        h_attns.append(h_attn)
-                    h_attn = torch.cat(h_attns, dim=-1)
-                    h_attn = self.multihead_linear(h_attn)
-                    return h_attn
-
-                deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
-
-                deg_noise = torch.rand_like(deg).to(deg.device)
-                h_ind_perm = lexsort([deg + deg_noise, batch.batch])
-
-                h_dense, mask = to_dense_batch(h[h_ind_perm], batch.batch[h_ind_perm])
-                h_dense_repeat = torch.cat([h_dense, h_dense.flip([1])], dim=1)
-                h_ind_perm_reverse = torch.argsort(h_ind_perm)
-
-                h_attn = []
-                for i in range(len(self.self_attn_moe)):
-                    h_attn.append(
-                        multihead_attn(
-                            h_dense_repeat,
-                            self.self_attn_moe[i],
-                            mask,
-                            h_ind_perm_reverse,
-                        )
-                    )
-                # moe router
-                # h_attn = torch.stack(h_attn, dim=1)
-                # allocate with moe_score to each expert
-                h_attn_gating = nn.Softmax(dim=-1)(moe_score)
-                # pdb.set_trace()
-                h_attn = torch.sum(  # weighted sum
-                    torch.stack(
-                        [
-                            h_attn[i] * h_attn_gating[..., [i]].expand_as(h_attn[i])
-                            for i in range(len(h_attn))
-                        ]
-                    ),
-                    dim=0,
-                )
-                # h_attn = h_attn.sum(dim=1)
-
-            elif self.global_model_type == "Mamba_NAG_NodeLevel":
-                walk = [batch.x]
-                for i in range(1, cfg.prep.neighbor_hops + 1):
-                    walk.append(batch[f"neighbors_{i}"])
-                h_walk = torch.stack(walk, dim=1)
-                # flip h_walk
-                h_walk = torch.flip(h_walk, [1])
-                h_walk = self.self_attn_node(h_walk)
-                h_walk = torch.flip(h_walk, [1])
-                for i in range(1, cfg.prep.neighbor_hops + 1):
-                    batch[f"neighbors_{i}"] = h_walk[:, i, :]
-
-                h = h_walk[:, 0, :] + h
-
-                if batch.split == "train":
-                    deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
-                    # deg_noise = torch.std(deg)*torch.randn(deg.shape).to(deg.device)
-                    # Potentially use torch.rand_like?
-                    # deg_noise = torch.std(deg)*torch.randn(deg.shape).to(deg.device)
-                    # deg_noise = torch.randn(deg.shape).to(deg.device)
-                    deg_noise = torch.rand_like(deg).to(deg.device)
-                    h_ind_perm = lexsort([deg + deg_noise, batch.batch])
-
-                    h_dense, mask = to_dense_batch(
-                        h[h_ind_perm], batch.batch[h_ind_perm]
-                    )  # why still need to batch?
-                    h_ind_perm_reverse = torch.argsort(h_ind_perm)
-
-                    h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
+            elif self.global_model_type == "Mamba_MoE":
+                """
+                input:h, batch -> random permutation -> h_dense, mask -> h_attn
+                """
+                if cfg.model.get('same_order_all_layers', False):
+                    h_attn = self.same_order_moe(h, batch)
                 else:
-                    mamba_arr = []
-                    deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
-                    for i in range(5):  # permutation
-                        # deg_noise = torch.std(deg)*torch.randn(deg.shape).to(deg.device)
-                        # deg_noise = torch.randn(deg.shape).to(deg.device)
-                        deg_noise = torch.rand_like(deg).to(deg.device)
-                        h_ind_perm = lexsort([deg + deg_noise, batch.batch])
-                        h_dense, mask = to_dense_batch(
-                            h[h_ind_perm], batch.batch[h_ind_perm]
-                        )
-                        h_ind_perm_reverse = torch.argsort(h_ind_perm)
-                        h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
-                        mamba_arr.append(h_attn)
-                    h_attn = sum(mamba_arr) / 5
+                    h_attn = self.diff_order_moe(h, batch)
 
-                if torch.isnan(h_attn).any():
-                    print("nan")
-                    pdb.set_trace()
 
             h_attn = self.dropout_attn(h_attn)
             if cfg.model.get("rtr_type", None) == "mamba":
@@ -674,11 +531,78 @@ class GPSLayer(nn.Module):
         if self.batch_norm:
             h = self.norm2(h)
         batch.x = h
-        if cfg.model.get("learn_rank", False) and self.training:
-            return batch, rank_score
+        # if cfg.model.get("learn_rank", False) and self.training:
+        #     return batch, rank_score
         if cfg.model.get("rtr_now", False):
             return batch, rtr_repr
         return batch
+
+    def same_order_moe(self, h, batch):
+        h_ind_perm = lexsort([batch.order_score, batch.batch])
+
+        h_dense, mask = to_dense_batch(
+            h[h_ind_perm], batch.batch[h_ind_perm]
+        )
+        h_ind_perm_reverse = torch.argsort(h_ind_perm)
+
+        router_mask, router_probs, router_logits = self.router(h_dense)
+        
+        h_clone = h_dense.clone()
+
+        router_mask = router_mask.bool()
+        idx_mask = router_mask.sum(dim=0)
+        idx_mask = torch.nonzero(idx_mask, as_tuple=True)[0].tolist()
+        
+        for i in idx_mask:
+            h_clone[router_mask[:, i]] = self.experts_mamba[i](h_dense[router_mask[:, i]])
+        
+        h_attn = router_probs.unsqueeze(-1) * h_clone # B * [B, L, D] -> [B, L, D]
+        h_attn = h_clone[mask][h_ind_perm_reverse]
+
+        batch.router_logits = router_logits
+        return h_attn
+
+    def diff_order_moe(self, h, batch):
+        router_tmp = self.gcn_for_router(
+                    Batch(
+                        batch=batch,
+                        x=h,
+                        edge_index=batch.edge_index,
+                        edge_attr=batch.edge_attr,
+                    )
+                ).x
+        
+        h_dense, mask = to_dense_batch(
+            router_tmp, batch.batch
+        )
+
+        router_mask, router_probs, router_logits = self.router(h_dense)
+
+        router_mask = router_mask.bool()
+        idx_mask = router_mask.sum(dim=0)
+        idx_mask = torch.nonzero(idx_mask, as_tuple=True)[0].tolist()
+
+        h_clone = h_dense.clone()
+        
+        for i in idx_mask:
+            # 1. learn order
+            deg = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
+            deg_noise = torch.rand_like(deg).to(deg.device)
+            h_ind_perm = lexsort([deg + deg_noise, batch.batch])
+            h_ind_perm_reverse = torch.argsort(h_ind_perm)
+
+            h_dense, mask = to_dense_batch(
+                h, batch.batch
+            )
+
+            h_clone[router_mask[:, i]] = self.experts_mamba[i](h_dense[router_mask[:, i]])
+        
+        h_attn = router_probs.unsqueeze(-1) * h_clone # B * [B, L, D] -> [B, L, D]
+        h_attn = h_clone[mask][h_ind_perm_reverse]
+
+        batch.router_logits = router_logits
+        return h_attn
+        
 
     def _sa_block(self, x, attn_mask, key_padding_mask):
         """Self-attention block."""

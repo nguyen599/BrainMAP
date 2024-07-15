@@ -1,3 +1,21 @@
+# 7.7
+## TODO
+1. use the same order for different layers 
+2. run model for brain network
+3. use GNN as the router
+
+
+
+# 6.27
+## TODO
+1. implement the MoE
+   1. what parts should I implement: layer: router: gnn, input: N * h, output: M * 1; mamba: M, input: N * h, output: N * h; for k times -> then aggregate (N * h * k)
+   2. problem:
+      1. multiple inputs have different router results
+2. read related paper
+   1. know what I can get from the papers
+
+
 # 5.7
 ## TODO
 ### Bad results

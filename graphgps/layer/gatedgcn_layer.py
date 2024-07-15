@@ -8,15 +8,19 @@ from torch_scatter import scatter
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.register import register_layer
 
+import pdb
+
 
 class GatedGCNLayer(pyg_nn.conv.MessagePassing):
     """
-        GatedGCN layer
-        Residual Gated Graph ConvNets
-        https://arxiv.org/pdf/1711.07553.pdf
+    GatedGCN layer
+    Residual Gated Graph ConvNets
+    https://arxiv.org/pdf/1711.07553.pdf
     """
-    def __init__(self, in_dim, out_dim, dropout, residual,
-                 equivstable_pe=False, **kwargs):
+
+    def __init__(
+        self, in_dim, out_dim, dropout, residual, equivstable_pe=False, **kwargs
+    ):
         super().__init__(**kwargs)
         self.A = pyg_nn.Linear(in_dim, out_dim, bias=True)
         self.B = pyg_nn.Linear(in_dim, out_dim, bias=True)
@@ -29,9 +33,8 @@ class GatedGCNLayer(pyg_nn.conv.MessagePassing):
         self.EquivStablePE = equivstable_pe
         if self.EquivStablePE:
             self.mlp_r_ij = nn.Sequential(
-                nn.Linear(1, out_dim), nn.ReLU(),
-                nn.Linear(out_dim, 1),
-                nn.Sigmoid())
+                nn.Linear(1, out_dim), nn.ReLU(), nn.Linear(out_dim, 1), nn.Sigmoid()
+            )
 
         self.bn_node_x = nn.BatchNorm1d(out_dim)
         self.bn_edge_e = nn.BatchNorm1d(out_dim)
@@ -40,7 +43,10 @@ class GatedGCNLayer(pyg_nn.conv.MessagePassing):
         self.e = None
 
     def forward(self, batch):
-        x, e, edge_index = batch.x, batch.edge_attr, batch.edge_index
+        try:
+            x, e, edge_index = batch.x, batch.edge_attr, batch.edge_index
+        except:
+            pdb.set_trace()
 
         """
         x               : [n_nodes, in_dim]
@@ -61,10 +67,9 @@ class GatedGCNLayer(pyg_nn.conv.MessagePassing):
         # ICLR 2022 https://openreview.net/pdf?id=e95i1IHcWj
         pe_LapPE = batch.pe_EquivStableLapPE if self.EquivStablePE else None
 
-        x, e = self.propagate(edge_index,
-                              Bx=Bx, Dx=Dx, Ex=Ex, Ce=Ce,
-                              e=e, Ax=Ax,
-                              PE=pe_LapPE)
+        x, e = self.propagate(
+            edge_index, Bx=Bx, Dx=Dx, Ex=Ex, Ce=Ce, e=e, Ax=Ax, PE=pe_LapPE
+        )
 
         x = self.bn_node_x(x)
         e = self.bn_edge_e(e)
@@ -112,12 +117,10 @@ class GatedGCNLayer(pyg_nn.conv.MessagePassing):
         dim_size = Bx.shape[0]  # or None ??   <--- Double check this
 
         sum_sigma_x = sigma_ij * Bx_j
-        numerator_eta_xj = scatter(sum_sigma_x, index, 0, None, dim_size,
-                                   reduce='sum')
+        numerator_eta_xj = scatter(sum_sigma_x, index, 0, None, dim_size, reduce="sum")
 
         sum_sigma = sigma_ij
-        denominator_eta_xj = scatter(sum_sigma, index, 0, None, dim_size,
-                                     reduce='sum')
+        denominator_eta_xj = scatter(sum_sigma, index, 0, None, dim_size, reduce="sum")
 
         out = numerator_eta_xj / (denominator_eta_xj + 1e-6)
         return out
@@ -133,19 +136,22 @@ class GatedGCNLayer(pyg_nn.conv.MessagePassing):
         return x, e_out
 
 
-@register_layer('gatedgcnconv')
+@register_layer("gatedgcnconv")
 class GatedGCNGraphGymLayer(nn.Module):
     """GatedGCN layer.
     Residual Gated Graph ConvNets
     https://arxiv.org/pdf/1711.07553.pdf
     """
+
     def __init__(self, layer_config: LayerConfig, **kwargs):
         super().__init__()
-        self.model = GatedGCNLayer(in_dim=layer_config.dim_in,
-                                   out_dim=layer_config.dim_out,
-                                   dropout=0.,  # Dropout is handled by GraphGym's `GeneralLayer` wrapper
-                                   residual=False,  # Residual connections are handled by GraphGym's `GNNStackStage` wrapper
-                                   **kwargs)
+        self.model = GatedGCNLayer(
+            in_dim=layer_config.dim_in,
+            out_dim=layer_config.dim_out,
+            dropout=0.0,  # Dropout is handled by GraphGym's `GeneralLayer` wrapper
+            residual=False,  # Residual connections are handled by GraphGym's `GNNStackStage` wrapper
+            **kwargs
+        )
 
     def forward(self, batch):
         return self.model(batch)

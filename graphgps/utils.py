@@ -5,6 +5,10 @@ from torch_geometric.utils import remove_self_loops
 from torch_scatter import scatter
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Tuple
+import pdb
+from torch_geometric.graphgym.config import cfg
+import torch_geometric
 
 from yacs.config import CfgNode
 
@@ -171,3 +175,114 @@ class NoisyTopkRouter(nn.Module):
         sparse_logits = zeros.scatter(-1, indices, top_k_logits)
         router_output = F.softmax(sparse_logits, dim=-1)
         return router_output, indices
+
+
+class Top1Router(nn.Module):
+    def __init__(self, n_embed, num_experts, if_jitter=False):
+        super(Top1Router, self).__init__()
+        self.num_experts = num_experts
+        self.jitter_noise = if_jitter
+        self.W_Q = nn.Linear(n_embed, n_embed)
+        self.W_K = nn.Linear(n_embed, n_embed)
+        self.W_V = nn.Linear(n_embed, n_embed)
+
+        self.experts_linear = nn.Linear(n_embed, num_experts)
+
+        self.pe = PositionalEncoding1D(n_embed)
+
+    def compute_router_probabilities(
+        self, h_dense: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        r""" """
+
+        if cfg.model.get(
+            "moe_pos_enc",
+            False,
+        ):
+            h_dense = self.pe(h_dense)  # B * N * D
+
+        self.attention_token = torch.ones_like(h_dense[:, [0], :])
+        Q = self.W_Q(self.attention_token)
+        K = self.W_K(h_dense)
+        V = self.W_V(h_dense)
+        # scaled dot product attention
+        attention_weights = torch.matmul(Q, K.transpose(-2, -1)) / (K.size(-1) ** 0.5)
+        attention_weights = F.softmax(attention_weights, dim=-1)
+        attention_output = torch.matmul(attention_weights, V)
+        # router
+        router_logits = attention_output.squeeze(1)
+
+        # router_logits = torch.mean(h_dense, dim=1)
+
+        if self.jitter_noise:
+            noise = torch.randn_like(router_logits) * 0.1
+            router_logits = router_logits + noise
+
+        router_logits = self.experts_linear(router_logits)
+
+        router_probs = F.softmax(router_logits, dim=-1)
+        return router_probs, router_logits
+
+    def forward(
+        self, h_dense: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        r"""
+        h_dense: B * N * D -> 1D positional encoding -> B * N * (D + H) -> attention -> B * D -> MLP -> B * 1
+        """
+        router_probs, router_logits = self.compute_router_probabilities(h_dense)
+        expert_index = router_logits.argmax(dim=-1)
+        expert_index = F.one_hot(expert_index, self.num_experts)
+
+        router_probs = router_probs.max(dim=-1).values.unsqueeze(-1)
+
+        return expert_index, router_probs, router_logits
+
+
+class PositionalEncoding1D(nn.Module):
+    def __init__(self, d_model, max_len=1000, pe_type="cat"):
+        super(PositionalEncoding1D, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        self.pe_type = pe_type
+
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2, dtype=torch.float)
+            * -(torch.log(torch.tensor(10000.0)) / d_model)
+        )
+
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+        self.cat_linear = nn.Linear(2 * d_model, d_model)
+
+    def forward(self, x):
+        if self.pe_type == "cat":
+            out = torch.cat(
+                (x, self.pe[:, : x.size(1), :].to(x.device).expand_as(x)), dim=-1
+            )
+            return self.cat_linear(out)
+        return x + self.pe[:, : x.size(1), :].to(x.device)
+
+
+class ExpModel(torch.nn.Module):
+    def __init__(self, model):
+        super(ExpModel, self).__init__()
+        self.model = model
+
+    def forward(self, x, edge_index, edge_attr1, y1, batch1, ptr1, batch_):
+        batch_model = torch_geometric.data.Batch(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr1,
+            y=y1,
+            batch=batch1,
+            ptr=ptr1,
+            split=batch_.split,
+        )
+        output = self.model(batch_model)
+        # pdb.set_trace()
+        return output[0]

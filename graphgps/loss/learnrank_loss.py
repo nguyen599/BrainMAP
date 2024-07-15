@@ -2,54 +2,59 @@ import torch.nn as nn
 import torch
 from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.register import register_loss
-
+import torch.nn.functional as F
 import pdb
 
 
-def get_rank_target(batch):
-    """Get rank target."""
-    for i in range(len(batch.ptr) - 1):
-        if i == 0:
-            rank_target = torch.arange(
-                batch.ptr[i + 1] - batch.ptr[i], dtype=torch.float32
-            ).to(batch.x.device) / (batch.ptr[i + 1] - batch.ptr[i])
-        else:
-            rank_target = torch.cat(
-                (
-                    rank_target,
-                    torch.arange(
-                        batch.ptr[i + 1] - batch.ptr[i], dtype=torch.float32
-                    ).to(batch.x.device)
-                    / (batch.ptr[i + 1] - batch.ptr[i]),
-                )
-            )
-    return rank_target
+# def get_rank_target(batch):
+#     """Get rank target."""
+#     for i in range(len(batch.ptr) - 1):
+#         if i == 0:
+#             rank_target = torch.arange(
+#                 batch.ptr[i + 1] - batch.ptr[i], dtype=torch.float32
+#             ).to(batch.x.device) / (batch.ptr[i + 1] - batch.ptr[i])
+#         else:
+#             rank_target = torch.cat(
+#                 (
+#                     rank_target,
+#                     torch.arange(
+#                         batch.ptr[i + 1] - batch.ptr[i], dtype=torch.float32
+#                     ).to(batch.x.device)
+#                     / (batch.ptr[i + 1] - batch.ptr[i]),
+#                 )
+#             )
+#     return rank_target
 
 
 # @register_loss("learnrank_cross_entropy")
-def learnrank_cross_entropy(
-    batch_1, batch_2, batch, rank_scores_opt, rank_scores, learn_rank=False
-):
-    """LearnRank cross-entropy loss."""
-    if cfg.dataset.task_type == "classification_multilabel":
-        bce_loss_func = nn.BCEWithLogitsLoss()
-        loss_1 = bce_loss_func(batch_1[0], batch_1[1])
-        loss_2 = bce_loss_func(batch_2[0], batch_2[1])
-        if learn_rank:
-            if loss_1 < loss_2 + 0.01:
-                rank_target = get_rank_target(batch).to(rank_scores[0].device)
-                loss_rank = 0
-                for i, rank_score_opt in enumerate(rank_scores):
-                    loss_rank += nn.CrossEntropyLoss()(rank_score_opt, rank_target)
-                loss_1 += 0.01 * loss_rank / len(rank_scores[0])
-                return loss_1, batch_1[1], batch_1[0]
-            else:
-                rank_target = get_rank_target(batch).to(rank_scores_opt[0].device)
-                loss_rank = 0
-                for i, rank_score in enumerate(rank_scores_opt):
-                    loss_rank += nn.CrossEntropyLoss()(rank_score, rank_target)
-                loss_2 += 0.01 * loss_rank / len(rank_scores_opt[0])
-                print("switch")
-                return loss_2, batch_2[1], batch_2[0]
+def learnrank_cross_entropy(batches, ranks, scores, learn_rank):
+    losses = []
+    for i in range(cfg.model.get("num_orders", 2)):
+        pred, true = batches[i]
+        pred = pred.squeeze(-1) if pred.ndim > 1 else pred
+        true = true.squeeze(-1) if true.ndim > 1 else true
+
+        if pred.ndim > 1 and true.ndim == 1:
+            pred = F.log_softmax(pred, dim=-1)
+            loss = F.nll_loss(pred, true)
+        # binary or multilabel
         else:
-            return loss_2, batch_2[1], batch_2[0]
+            true = true.float()
+            loss = torch.nn.BCEWithLogitsLoss(reduction=cfg.model.size_average)(
+                pred, true
+            )
+            true = true.long()
+        losses.append(loss)
+
+    best_index = torch.argmin(torch.stack(losses))
+    numerators = F.mse_loss(ranks[best_index].float(), scores)
+    denominators = [
+        F.mse_loss(ranks[index].float(), torch.sort(scores)[0])
+        for index in range(len(ranks))
+        if index != best_index
+    ]
+    denominators = torch.stack(denominators).sum()
+    rank_loss = numerators / denominators
+    loss = losses[best_index] + learn_rank * rank_loss
+
+    return (loss, batches[best_index][1].cpu(), batches[best_index][0].cpu())

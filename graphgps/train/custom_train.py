@@ -14,7 +14,11 @@ from torch_geometric.graphgym.utils.epoch import is_eval_epoch, is_ckpt_epoch
 
 from graphgps.loss.subtoken_prediction_loss import subtoken_cross_entropy
 from graphgps.loss.learnrank_loss import learnrank_cross_entropy
-from graphgps.utils import cfg_to_dict, flatten_dict, make_wandb_name
+from graphgps.loss.moe_loss import compute_loss_moe
+
+# from graphgps.loss.contrastive_loss import contrastive_entropy
+from graphgps.utils import cfg_to_dict, flatten_dict, make_wandb_name, ExpModel
+from torch_geometric.data import Batch
 
 from deepspeed.profiling.flops_profiler import FlopsProfiler
 
@@ -95,6 +99,18 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
     optimizer.zero_grad()
     time_start = time.time()
     for iter, batch in enumerate(loader):
+        if epoch == cfg.train.get("contrastive_pretrain_epochs", 50) and cfg.train.get(
+            "contrastive_pretrain", False
+        ):
+            torch.save(
+                model.state_dict(),
+                f"pretrained_models/{cfg.model.type}_{cfg.dataset.name}_pretrain.pt",
+            )
+            exit()
+        if cfg.train.get("contrastive_pretrain", False) and epoch < cfg.train.get(
+            "contrastive_pretrain_epochs", 50
+        ):
+            batch = Batch.from_data_list([batch, batch])
         if if_select:
             ratio = 1.0
             idx = subsample_batch_index(batch, min_k=1, ratio=ratio)
@@ -106,25 +122,6 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
         batch.to(torch.device(cfg.device))
         if epoch == 50 and cfg.model.get("gnn_explainer", False):
             batch_ = batch.clone().to(torch.device(cfg.device))
-
-            class ExpModel(torch.nn.Module):
-                def __init__(self, model):
-                    super(ExpModel, self).__init__()
-                    self.model = model
-
-                def forward(self, x, edge_index, edge_attr1, y1, batch1, ptr1):
-                    batch_model = torch_geometric.data.Batch(
-                        x=x,
-                        edge_index=edge_index,
-                        edge_attr=edge_attr1,
-                        y=y1,
-                        batch=batch1,
-                        ptr=ptr1,
-                        split=batch_.split,
-                    )
-                    output = self.model(batch_model)
-                    # pdb.set_trace()
-                    return output[0]
 
             custom_forward = ExpModel(model)
 
@@ -140,18 +137,17 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                     return_type="probs",
                 ),
             )
-            node_index = 0
             for i in range(5):
                 try:
                     if batch_[i].y == 3:
                         explanation = explainer(
                             batch_[i].x,
                             batch_[i].edge_index,
-                            # index=node_index,
                             edge_attr1=batch_[i].edge_attr,
                             y1=batch_[i].y,
                             batch1=batch_.batch[:360],
                             ptr1=batch_.ptr[:2],
+                            batch_=batch_,
                         )
                         print("Explanation:", explanation)
                         if (
@@ -176,19 +172,18 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                     continue
         else:
             if cfg.model.learn_rank:
-                (batch_1, batch_2, rank_scores_opt, rank_scores) = model(batch)
+                (batches, ranks, scores) = model(batch)
 
                 if epoch < cfg.model.learn_rank_start_epoch:
                     learn_rank = False
                 else:
                     learn_rank = True
                 loss, true, pred_score = learnrank_cross_entropy(
-                    batch_1, batch_2, batch, rank_scores_opt, rank_scores, learn_rank
+                    batches, ranks, scores, learn_rank
                 )
                 _true = true
                 _pred = pred_score
             else:
-                test = batch.x.clone()
                 pred, true = model(batch)
                 if cfg.dataset.name == "ogbg-code2":
                     loss, pred_score = subtoken_cross_entropy(pred, true)
@@ -200,6 +195,19 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                     )
                     loss, pred_score = arxiv_cross_entropy(pred, true, split_idx)
                     _true = true[split_idx].detach().to("cpu", non_blocking=True)
+                    _pred = pred_score.detach().to("cpu", non_blocking=True)
+                elif cfg.train.get(
+                    "contrastive_pretrain", False
+                ) and epoch < cfg.train.get("contrastive_pretrain_epochs", 50):
+                    loss = contrastive_entropy(pred, true)
+                    _true = true.detach().to("cpu", non_blocking=True)
+                    _pred = pred.detach().to("cpu", non_blocking=True)
+                elif (
+                    cfg.get("gt", None) is not None
+                    and cfg.gt.get("layer_type", None) == "CustomGatedGCN+Mamba_MoE"
+                ):
+                    loss, true, pred_score = compute_loss_moe(pred, true, batch)
+                    _true = true.detach().to("cpu", non_blocking=True)
                     _pred = pred_score.detach().to("cpu", non_blocking=True)
                 else:
                     loss, pred_score = compute_loss(pred, true)
@@ -421,6 +429,13 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
 
     """
     start_epoch = 0
+    if cfg.train.get("contrastive_finetune", False):
+        assert cfg.train.get("contrastive_pretrain", False) is False
+        model.load_state_dict(
+            torch.load(
+                f"pretrained_models/{cfg.model.type}_{cfg.dataset.name}_pretrain.pt"
+            )
+        )
     if cfg.train.auto_resume:
         start_epoch = load_ckpt(model, optimizer, scheduler, cfg.train.epoch_resume)
     if start_epoch == cfg.optim.max_epoch:
@@ -453,7 +468,7 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
     with torch.autograd.detect_anomaly():
         attributions_all = []
         graph_id_all = []
-        for cur_epoch in range(start_epoch, cfg.optim.max_epoch):
+        for cur_epoch in range(start_epoch, cfg.optim.max_epoch):  #
             start_time = time.perf_counter()
             train_epoch(
                 loggers[0],

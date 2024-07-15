@@ -6,6 +6,11 @@ from torch_geometric.graphgym.models.gnn import GNNPreMP
 from torch_geometric.graphgym.models.layer import new_layer_config, BatchNorm1dNode
 from torch_geometric.graphgym.register import register_network
 from graphgps.encoder.ER_edge_encoder import EREdgeEncoder
+from torch_geometric.data import Batch
+from graphgps.layer.gatedgcn_layer import GatedGCNLayer
+
+from torch_geometric.utils import degree
+from torch_geometric.utils import to_dense_batch
 
 from graphgps.layer.gps_layer import GPSLayer
 
@@ -117,25 +122,34 @@ class GPSModel(torch.nn.Module):
         GNNHead = register.head_dict[cfg.gnn.head]
         self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
 
-    def forward(self, batch):
-        if cfg.model.learn_rank and self.training:
-            batch = self.encoder(batch)
-            batch_clone = batch.clone()
-            rank_scores = []
-            rank_scores_opt = []
-            for i, layer in enumerate(self.layers):
-                batch, rank_score_opt = layer(batch, True)
-                batch_clone, rank_score = layer(batch_clone, False)
-                rank_scores.append(rank_score)
-                rank_scores_opt.append(rank_score_opt)
-            rank_scores = torch.stack(rank_scores, dim=0)
-            rank_scores_opt = torch.stack(rank_scores_opt, dim=0)
-            return (
-                self.post_mp(batch),
-                self.post_mp(batch_clone),
-                rank_scores_opt,
-                rank_scores,
+        if cfg.model.get("learn_rank", False):
+            self.rank_learner_gcn = GatedGCNLayer(
+                cfg.gt.dim_hidden,
+                cfg.gt.dim_hidden,
+                dropout=cfg.gt.dropout,
+                residual=False,
             )
+            self.rank_learner = torch.nn.Linear(cfg.gt.dim_hidden, 1)
+
+    def forward(self, batch):
+        # if cfg.model.learn_rank and self.training:
+        #     batch = self.encoder(batch)
+        #     batch_clone = batch.clone()
+        #     rank_scores = []
+        #     rank_scores_opt = []
+        #     for i, layer in enumerate(self.layers):
+        #         batch, rank_score_opt = layer(batch, True)
+        #         batch_clone, rank_score = layer(batch_clone, False)
+        #         rank_scores.append(rank_score)
+        #         rank_scores_opt.append(rank_score_opt)
+        #     rank_scores = torch.stack(rank_scores, dim=0)
+        #     rank_scores_opt = torch.stack(rank_scores_opt, dim=0)
+        #     return (
+        #         self.post_mp(batch),
+        #         self.post_mp(batch_clone),
+        #         rank_scores_opt,
+        #         rank_scores,
+        #     )
 
         if cfg.model.get("rtr_now", False):
             batch = self.encoder(batch)
@@ -152,6 +166,93 @@ class GPSModel(torch.nn.Module):
             )
             return self.post_mp(batch)
 
+        if cfg.model.get("same_order_all_layers", False) and cfg.model.get(
+            "learn_rank", False
+        ):
+            batch = self.encoder(batch)
+
+            # GNN for order learner
+            score_tmp = self.rank_learner_gcn(
+                Batch(
+                    batch=batch,
+                    x=batch.x,
+                    edge_index=batch.edge_index,
+                    edge_attr=batch.edge_attr,
+                )
+            ).x
+            score_tmp, mask = to_dense_batch(score_tmp, batch.batch)
+            score = self.rank_learner(score_tmp).squeeze()
+            s_min = torch.min(score, dim=-1).values
+            s_max = torch.max(score, dim=-1).values
+
+            S = score.unsqueeze(2) - score.unsqueeze(1)
+            S = torch.sigmoid(S)
+            S_min = torch.sigmoid(
+                s_min.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
+            )
+            S_max = torch.sigmoid(
+                s_max.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
+            )
+
+            numerator = S.sum(dim=2) - S_min.sum(dim=2)
+            denominator = S_max.sum(dim=2) - S_min.sum(dim=2)
+            score = (numerator / denominator) * (score.size(1) - 1) + 1
+
+            # order_score = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
+            if self.training:
+                ranks = []
+                batches = []
+                for i in range(cfg.model.get("num_orders", 2)):
+                    batch_clone = batch.clone()
+                    deg = degree(batch_clone.edge_index[0], batch_clone.x.shape[0]).to(
+                        torch.float
+                    )
+                    order_score = torch.rand_like(deg).to(deg.device)
+                    batch_clone.order_score = order_score
+
+                    order_score, mask = to_dense_batch(order_score, batch.batch)
+                    rank = torch.argsort(torch.argsort(order_score, descending=True))
+                    ranks.append(rank)
+
+                    # edge_index = [batch.edge_index]
+                    # x = [batch.x]
+                    # edge_attr = [batch.edge_attr]
+                    # y = [batch.y]
+                    # ptr = [batch.ptr]
+                    # batch_batch = [batch.batch]
+                    # if cfg.model.get("duplicate_batch", False):
+                    #     duplicate = cfg.model.get("num_experts", 2) - 1
+                    # else:
+                    #     duplicate = 1
+                    # for i in range(duplicate):
+                    #     edge_index.append(batch.edge_index + batch.x.shape[0] * (i + 1))
+                    #     x.append(batch.x)
+                    #     edge_attr.append(batch.edge_attr)
+                    #     y.append(batch.y)
+                    #     ptr.append(ptr[-1][1:] + ptr[0][-1])
+                    #     batch_batch.append(batch_batch[-1] + batch_batch[0][-1] + 1)
+                    # batch.edge_index = torch.cat(edge_index, dim=1)
+                    # batch.x = torch.cat(x, dim=0)
+                    # if batch.edge_attr is not None:
+                    #     batch.edge_attr = torch.cat(edge_attr, dim=0)
+                    # batch.y = torch.cat(y, dim=0)
+                    # batch.ptr = torch.cat(ptr, dim=0)
+                    # batch.batch = torch.cat(batch_batch, dim=0)
+                    for i, layer in enumerate(self.layers):
+                        batch_clone = layer(batch_clone)
+                    batch_clone = self.post_mp(batch_clone)
+                    batches.append(batch_clone)
+
+                return batches, ranks, score
+
+            else:
+                batch.order_score = score[mask]
+                for i, layer in enumerate(self.layers):
+                    batch = layer(batch)
+                return self.post_mp(batch)
+
         for module in self.children():
             batch = module(batch)
+            # print(batch)
+            # pdb.set_trace()
         return batch

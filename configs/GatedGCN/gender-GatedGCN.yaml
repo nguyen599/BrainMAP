@@ -5,8 +5,8 @@ wandb:
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
-  format: Brain
-  name: brain
+  format: HCP
+  name: HCPGender
   task: graph
   task_type: classification
   transductive: False
@@ -20,7 +20,7 @@ dataset:
   split: [0.5, 0.2, 0.3]
 train:
   mode: custom
-  batch_size: 32 
+  batch_size: 32
   eval_period: 1
   ckpt_period: 60
   ckpt_period: 60

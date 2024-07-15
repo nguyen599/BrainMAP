@@ -1,14 +1,15 @@
-out_dir: results/degre_mult
-metric_best: accuracy
+out_dir: results
+metric_best: mae
+metric_agg: argmin
 wandb:
   use: True
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
-  format: Brain
-  name: brain
+  format: HCP
+  name: HCPWM
   task: graph
-  task_type: classification
+  task_type: regression
   transductive: False
   node_encoder: True
   node_encoder_name: LinearNode
@@ -20,37 +21,28 @@ dataset:
   split: [0.5, 0.2, 0.3]
 train:
   mode: custom
-  batch_size: 32 
+  batch_size: 20
   eval_period: 1
-  ckpt_period: 60
-  ckpt_period: 60
-  enable_ckpt: False
-  # auto_resume: True
-  # epoch_resume: 59
+  ckpt_period: 100
 model:
   type: custom_gnn
-  loss_fun: cross_entropy
+  loss_fun: l1
   graph_pooling: mean
-  graph_index: True
-  gnn_explainer: False
 gnn:
-  # head: inductive_node
   layers_pre_mp: 0
-  layers_mp: 8
-  layers_post_mp: 3
-  dim_inner: 108
+  layers_mp: 5
+  layers_post_mp: 1
+  dim_inner: 138
   layer_type: gatedgcnconv
   act: relu
   residual: True
   dropout: 0.0
-  agg: sum
-  normalize_adj: False
 optim:
-  optimizer: adam
+  optimizer: adamW
   weight_decay: 0.0
   base_lr: 0.001
-  max_epoch: 500
+  max_epoch: 200
   scheduler: reduce_on_plateau
   reduce_factor: 0.5
-  schedule_patience: 10
+  schedule_patience: 20
   min_lr: 1e-5
