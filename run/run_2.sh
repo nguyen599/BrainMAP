@@ -1,4 +1,4 @@
-for cfg in 'configs/Mamba/HCP/age-mamba.yaml' 'configs/Mamba/HCP/gender-mamba.yaml'
+for cfg in  'configs/Mamba/HCP/wm-mamba.yaml' 'configs/Mamba/HCP/fi-mamba.yaml'
 do
     for base_lr in 0.1 0.05 0.01 0.001
     do  
