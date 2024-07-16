@@ -88,7 +88,8 @@ def custom_set_run_dir(cfg, run_id):
     if cfg.train.auto_resume:
         os.makedirs(cfg.run_dir, exist_ok=True)
     else:
-        makedirs_rm_exist(cfg.run_dir)
+        # makedirs_rm_exist(cfg.run_dir)
+        os.makedirs(cfg.run_dir, exist_ok=True)
 
 
 def run_loop_settings():
