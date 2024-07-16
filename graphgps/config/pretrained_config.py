@@ -7,7 +7,7 @@ def set_cfg_pretrained(cfg):
     """Configuration options for loading a pretrained model.
     """
 
-    cfg.pretrained = CN()
+    cfg.pretrained = CN(new_allowed=True)
 
     # Directory path to a saved experiment, if set, load the model from there
     # and fine-tune / run inference with it on a specified dataset.

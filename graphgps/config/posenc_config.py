@@ -8,16 +8,16 @@ def set_cfg_posenc(cfg):
     """
 
     # Argument group for each Positional Encoding class.
-    cfg.posenc_LapPE = CN()
-    cfg.posenc_SignNet = CN()
-    cfg.posenc_RWSE = CN()
-    cfg.posenc_HKdiagSE = CN()
-    cfg.posenc_ElstaticSE = CN()
-    cfg.posenc_EquivStableLapPE = CN()
+    cfg.posenc_LapPE = CN(new_allowed=True)
+    cfg.posenc_SignNet = CN(new_allowed=True)
+    cfg.posenc_RWSE = CN(new_allowed=True)
+    cfg.posenc_HKdiagSE = CN(new_allowed=True)
+    cfg.posenc_ElstaticSE = CN(new_allowed=True)
+    cfg.posenc_EquivStableLapPE = CN(new_allowed=True)
 
     # Effective Resistance Embeddings
-    cfg.posenc_ERN = CN() #Effective Resistance for Nodes
-    cfg.posenc_ERE = CN() #Effective Resistance for Edges
+    cfg.posenc_ERN = CN(new_allowed=True) #Effective Resistance for Nodes
+    cfg.posenc_ERE = CN(new_allowed=True) #Effective Resistance for Edges
 
     # Common arguments to all PE types.
     for name in ['posenc_LapPE', 'posenc_SignNet',
@@ -58,7 +58,7 @@ def set_cfg_posenc(cfg):
     # Config for Laplacian Eigen-decomposition for PEs that use it.
     for name in ['posenc_LapPE', 'posenc_SignNet', 'posenc_EquivStableLapPE']:
         pecfg = getattr(cfg, name)
-        pecfg.eigen = CN()
+        pecfg.eigen = CN(new_allowed=True)
 
         # The normalization scheme for the graph Laplacian: 'none', 'sym', or 'rw'
         pecfg.eigen.laplacian_norm = 'sym'
@@ -77,7 +77,7 @@ def set_cfg_posenc(cfg):
         pecfg = getattr(cfg, name)
 
         # Config for Kernel-based PE specific options.
-        pecfg.kernel = CN()
+        pecfg.kernel = CN(new_allowed=True)
 
         # List of times to compute the heat kernel for (the time is equivalent to
         # the variance of the kernel) / the number of steps for random walk kernel

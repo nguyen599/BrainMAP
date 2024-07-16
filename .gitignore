@@ -160,7 +160,7 @@ dmypy.json
 *.swp
 
 # test and command
-*.sh
+# *.sh
 *.md
 *.txt
 test.py

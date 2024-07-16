@@ -11,7 +11,7 @@ def set_cfg_gt(cfg):
     """
 
     # Positional encodings argument group
-    cfg.gt = CN()
+    cfg.gt = CN(new_allowed=True)
 
     # Type of Graph Transformer layer to use
     cfg.gt.layer_type = "SANLayer"
@@ -57,7 +57,7 @@ def set_cfg_gt(cfg):
     cfg.gt.activation = "relu"
 
     # BigBird model/GPS-BigBird layer.
-    cfg.gt.bigbird = CN()
+    cfg.gt.bigbird = CN(new_allowed=True)
 
     cfg.gt.bigbird.attention_type = "block_sparse"
 
