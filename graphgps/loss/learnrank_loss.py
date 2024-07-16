@@ -57,4 +57,8 @@ def learnrank_cross_entropy(batches, ranks, scores, learn_rank):
     rank_loss = numerators / denominators
     loss = losses[best_index] + learn_rank * rank_loss
 
-    return (loss, batches[best_index][1].cpu(), batches[best_index][0].cpu())
+    return (
+        loss,
+        batches[best_index][1].cpu().squeeze(-1),
+        batches[best_index][0].cpu().squeeze(-1),
+    )

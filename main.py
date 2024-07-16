@@ -34,6 +34,7 @@ from torch_geometric import seed_everything
 from graphgps.finetuning import load_pretrained_model_cfg, init_model_from_pretrained
 from graphgps.logger import create_logger
 import warnings
+import argparse
 
 
 def new_optimizer_config(cfg):
@@ -127,16 +128,61 @@ def run_loop_settings():
     return run_ids, seeds, split_indices
 
 
+def set_nested_dict(d, keys, value):
+    for key in keys[:-1]:
+        d = d.setdefault(key, {})
+    d[keys[-1]] = value
+
+
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     # Load cmd line args
-    args = parse_args()
+    # args = parse_args()
+    parser = argparse.ArgumentParser(description="GraphGym")
+
+    parser.add_argument(
+        "--cfg",
+        dest="cfg_file",
+        type=str,
+        required=True,
+        help="The configuration file path.",
+    )
+    parser.add_argument(
+        "--repeat", type=int, default=1, help="The number of repeated jobs."
+    )
+    parser.add_argument(
+        "--mark_done",
+        action="store_true",
+        help="Mark yaml as done after a job has finished.",
+    )
+    # parser.add_argument(
+    #     "opts",
+    #     default=None,
+    #     nargs=argparse.REMAINDER,
+    #     help="See graphgym/config.py for remaining options.",
+    # )
+
+    args, unknown_args = parser.parse_known_args()
+    args.opts = []
 
     # Load config file
     set_cfg(cfg)
     load_cfg(cfg, args)
     custom_set_out_dir(cfg, args.cfg_file, cfg.name_tag)
     dump_cfg(cfg)
+
+    i = 0
+    while i < len(unknown_args):
+        if unknown_args[i].startswith("--"):
+            key = unknown_args[i][2:]  # Remove the leading '--'
+            keys = key.split(".")  # Split nested keys
+            if i + 1 < len(unknown_args) and not unknown_args[i + 1].startswith("--"):
+                value = unknown_args[i + 1]
+                i += 1
+            else:
+                value = True  # Handle flag-like arguments
+            set_nested_dict(cfg, keys, value)
+        i += 1
     # Set Pytorch environment
     torch.set_num_threads(cfg.num_threads)
     # Repeat for multiple experiment runs
