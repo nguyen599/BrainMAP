@@ -18,6 +18,7 @@ dataset:
   edge_encoder_bn: False
   split_mode: random
   split: [0.5, 0.2, 0.3]
+  dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
   centrality_types: katz

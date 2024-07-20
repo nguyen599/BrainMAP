@@ -172,14 +172,14 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                     continue
         else:
             if cfg.model.learn_rank:
-                (batches, ranks, scores) = model(batch)
+                (batches, ranks, scores, router_logits) = model(batch)
 
                 if epoch < cfg.model.learn_rank_start_epoch:
                     learn_rank = False
                 else:
                     learn_rank = True
                 loss, true, pred_score = learnrank_cross_entropy(
-                    batches, ranks, scores, learn_rank
+                    batches, ranks, scores, learn_rank, router_logits
                 )
                 _true = true
                 _pred = pred_score
@@ -226,7 +226,12 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                     total_node += batch.x.size(0)
 
             loss = loss.clamp(-1e6, 1e6)
+            
+            # try:
             loss.backward()
+            # except:
+            #     pdb.set_trace()
+
 
             # Parameters update after accumulating gradients for given num. batches.
             if ((iter + 1) % batch_accumulation == 0) or (iter + 1 == len(loader)):

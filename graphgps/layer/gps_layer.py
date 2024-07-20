@@ -89,7 +89,7 @@ class GPSLayer(nn.Module):
             self.local_model = pygnn.GENConv(dim_h, dim_h)
         elif local_gnn_type == "GINE":
             gin_nn = nn.Sequential(
-                Linear_pyg(dim_h, dim_h), nn.ReLU(), Linear_pyg(dim_h, dim_h)
+                Linear_pyg(dim_h, dim_h), nn.LeakyReLU(), Linear_pyg(dim_h, dim_h)
             )
             if self.equivstable_pe:  # Use specialised GINE layer for EquivStableLapPE.
                 self.local_model = GINEConvESLapPE(gin_nn)
@@ -153,7 +153,7 @@ class GPSLayer(nn.Module):
         self.dropout_attn = nn.Dropout(attn_dropout)
 
         # Feed Forward block.
-        self.activation = F.relu
+        self.activation = F.leaky_relu
         self.tanh = F.tanh
         self.ff_linear1 = nn.Linear(dim_h, dim_h * 2)
         self.ff_linear2 = nn.Linear(dim_h * 2, dim_h)
@@ -510,12 +510,14 @@ class GPSLayer(nn.Module):
                 else:
                     h_attn = self.diff_order_moe(h, batch)
 
-
+            h_attn = self.activation(h_attn)
             h_attn = self.dropout_attn(h_attn)
             if cfg.model.get("rtr_type", None) == "mamba":
                 rtr_repr = h_attn
 
             h_attn = h_in1 + h_attn  # Residual connection.
+            h_attn = h_attn / h_attn.max()
+            # pdb.set_trace()
             if self.layer_norm:
                 h_attn = self.norm1_attn(h_attn, batch.batch)
             if self.batch_norm:
@@ -524,12 +526,20 @@ class GPSLayer(nn.Module):
 
         # Combine local and global outputs.
         h = sum(h_out_list)
+        # pdb.set_trace()
+
         # Feed Forward block.
+        if torch.isnan(h).any():
+            pdb.set_trace()
         h = h + self._ff_block(h)
+        if torch.isnan(h).any():
+            pdb.set_trace()
         if self.layer_norm:
             h = self.norm2(h, batch.batch)
         if self.batch_norm:
             h = self.norm2(h)
+        if torch.isnan(h).any():
+            pdb.set_trace()
         batch.x = h
         # if cfg.model.get("learn_rank", False) and self.training:
         #     return batch, rank_score
@@ -558,8 +568,12 @@ class GPSLayer(nn.Module):
         
         h_attn = router_probs.unsqueeze(-1) * h_clone # B * [B, L, D] -> [B, L, D]
         h_attn = h_clone[mask][h_ind_perm_reverse]
-
-        batch.router_logits = router_logits
+        
+        if hasattr(batch, "router_logits"):
+            batch.router_logits.append(router_logits)
+        else:
+            batch.router_logits = [router_logits]
+        # batch.router_logits = router_logits
         return h_attn
 
     def diff_order_moe(self, h, batch):
@@ -600,7 +614,11 @@ class GPSLayer(nn.Module):
         h_attn = router_probs.unsqueeze(-1) * h_clone # B * [B, L, D] -> [B, L, D]
         h_attn = h_clone[mask][h_ind_perm_reverse]
 
-        batch.router_logits = router_logits
+        # batch.router_logits = router_logits
+        if hasattr(batch, "router_logits"):
+            batch.router_logits.append(router_logits)
+        else:
+            batch.router_logits = [router_logits]
         return h_attn
         
 

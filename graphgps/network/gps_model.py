@@ -13,6 +13,7 @@ from torch_geometric.utils import degree
 from torch_geometric.utils import to_dense_batch
 
 from graphgps.layer.gps_layer import GPSLayer
+import torch.nn as nn
 
 import os
 
@@ -123,12 +124,18 @@ class GPSModel(torch.nn.Module):
         self.post_mp = GNNHead(dim_in=cfg.gnn.dim_inner, dim_out=dim_out)
 
         if cfg.model.get("learn_rank", False):
-            self.rank_learner_gcn = GatedGCNLayer(
-                cfg.gt.dim_hidden,
-                cfg.gt.dim_hidden,
-                dropout=cfg.gt.dropout,
-                residual=False,
-            )
+            self.rank_learner_gcn = nn.ParameterList(
+                    [
+                        GatedGCNLayer(
+                            cfg.gt.dim_hidden,
+                            cfg.gt.dim_hidden,
+                            dropout=cfg.gt.dropout,
+                            residual=False,
+                        )
+                        for i in range(cfg.model.get('num_orders', 1))
+                    ]
+                )
+
             self.rank_learner = torch.nn.Linear(cfg.gt.dim_hidden, 1)
 
     def forward(self, batch):
@@ -202,13 +209,14 @@ class GPSModel(torch.nn.Module):
             if self.training:
                 ranks = []
                 batches = []
-                for i in range(cfg.model.get("num_orders", 2)):
+                router_logits = []
+                for i in range(cfg.model.get("num_orders", 1)*2):
                     batch_clone = batch.clone()
                     deg = degree(batch_clone.edge_index[0], batch_clone.x.shape[0]).to(
                         torch.float
                     )
                     order_score = torch.rand_like(deg).to(deg.device)
-                    batch_clone.order_score = order_score
+                    batch_clone.order_score = order_score + deg
 
                     order_score, mask = to_dense_batch(order_score, batch.batch)
                     rank = torch.argsort(torch.argsort(order_score, descending=True))
@@ -240,10 +248,12 @@ class GPSModel(torch.nn.Module):
                     # batch.batch = torch.cat(batch_batch, dim=0)
                     for i, layer in enumerate(self.layers):
                         batch_clone = layer(batch_clone)
+                    router_logit = batch_clone.router_logits
                     batch_clone = self.post_mp(batch_clone)
                     batches.append(batch_clone)
+                    router_logits.append(router_logit)
 
-                return batches, ranks, score
+                return batches, ranks, score, router_logits
 
             else:
                 batch.order_score = score[mask]

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import torch.optim as optim
 from torch.nn import Parameter
-from torch.optim import Adagrad, AdamW, Optimizer
+from torch.optim import Adagrad, AdamW, Optimizer, RAdam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from torch_geometric.graphgym.optim import SchedulerConfig
@@ -22,6 +22,12 @@ def adagrad_optimizer(params: Iterator[Parameter], base_lr: float,
 def adamW_optimizer(params: Iterator[Parameter], base_lr: float,
                    weight_decay: float) -> AdamW:
     return AdamW(params, lr=base_lr, weight_decay=weight_decay)
+
+@register.register_optimizer('RAdam')
+def RAdam_optimizer(params: Iterator[Parameter], base_lr: float,
+                   weight_decay: float) -> Optimizer:
+    return RAdam(params, lr=base_lr, weight_decay=weight_decay)
+
 
 
 

@@ -19,6 +19,7 @@ dataset:
   edge_encoder_bn: False
   split_mode: random
   split: [0.5, 0.2, 0.3]
+  dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
   centrality_types: katz
@@ -75,8 +76,8 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 0.01
-  base_lr: 0.001
+  weight_decay: 1e-5
+  base_lr: 0.05
   max_epoch: 200
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10

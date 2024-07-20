@@ -208,7 +208,7 @@ class CustomLogger(Logger):
         return result
 
     def regression(self):
-        true, pred = torch.cat(self._true), torch.cat(self._pred)
+        true, pred = torch.cat(self._true).detach(), torch.cat(self._pred).detach()
         reformat = lambda x: round(float(x), cfg.round)
         return {
             "mae": reformat(mean_absolute_error(true, pred)),

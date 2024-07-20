@@ -38,16 +38,20 @@ def compute_loss_moe(pred, true, batch):
     pred = pred.squeeze(-1) if pred.ndim > 1 else pred
     true = true.squeeze(-1) if true.ndim > 1 else true
 
-    if pred.ndim > 1 and true.ndim == 1:
-        pred = F.log_softmax(pred, dim=-1)
-        loss = F.nll_loss(pred, true)
-    # binary or multilabel
-    else:
-        true = true.float()
-        loss = torch.nn.BCEWithLogitsLoss(reduction=cfg.model.size_average)(pred, true)
-        true = true.long()
+    if cfg.model.loss_fun == 'cross_entropy':
+        if pred.ndim > 1 and true.ndim == 1:
+            pred = F.log_softmax(pred, dim=-1)
+            loss = F.nll_loss(pred, true)
+        # binary or multilabel
+        else:
+            true = true.float()
+            loss = torch.nn.BCEWithLogitsLoss(reduction=cfg.model.size_average)(pred, true)
+            true = true.long()
+    elif cfg.model.loss_fun =='mse':
+        loss = torch.nn.MSELoss(reduction=cfg.model.size_average)(pred, true)
 
-    router_probs = torch.softmax(batch.router_logits, dim=-1)
-    loss += load_balancing_loss(router_probs) * 0.001
+    for i in range(len(batch.router_logits)):
+        router_probs = torch.softmax(batch.router_logits[i], dim=-1)
+        loss += load_balancing_loss(router_probs) * 0.01
 
     return loss, true, pred

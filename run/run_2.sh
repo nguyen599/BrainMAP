@@ -1,6 +1,6 @@
 for cfg in  'configs/Mamba/HCP/wm-mamba.yaml' 'configs/Mamba/HCP/fi-mamba.yaml'
 do
-    for base_lr in 0.1 0.05 0.01 0.001
+    for base_lr in 0.1 
     do  
         for wd in 0.0001 
         do
