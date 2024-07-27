@@ -1,4 +1,4 @@
-for cfg in 'configs/GatedGCN/brain-GAT.yaml' 'configs/GatedGCN/fi-GAT.yaml' 'configs/GatedGCN/gender-GAT.yaml' 'configs/GatedGCN/wm-GAT.yaml'
+for cfg in 'configs/GatedGCN/wm-GCN.yaml' 'configs/GatedGCN/fi-GCN.yaml' 
 do
     for base_lr in 0.05
     do  
@@ -17,11 +17,11 @@ do
             echo $cfg
             nohup python main.py \
                 --cfg $cfg \
-                --seed 1 \
+                --seed 11000 \
                 --optim.max_epoch 100 > $output_file 2>&1 &
             # pid=$!
             # wait $pid
-            sleep 30
+            sleep 10
         done
     done
 done
