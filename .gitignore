@@ -10,6 +10,7 @@ scripts/pcqm4m/**/*.tsv
 scripts/pcqm4m/pcqm4m-v2/
 slurm_history/
 datasets/
+!/datasets/brain/
 pretrained/
 results/
 vocprep/benchmark_RELEASE/
@@ -168,4 +169,5 @@ test.py
 # files
 *.gz
 *.pt
+
 
