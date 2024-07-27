@@ -139,24 +139,15 @@ class GPSModel(torch.nn.Module):
             self.rank_learner = torch.nn.Linear(cfg.gt.dim_hidden, 1)
 
     def forward(self, batch):
-        # if cfg.model.learn_rank and self.training:
-        #     batch = self.encoder(batch)
-        #     batch_clone = batch.clone()
-        #     rank_scores = []
-        #     rank_scores_opt = []
-        #     for i, layer in enumerate(self.layers):
-        #         batch, rank_score_opt = layer(batch, True)
-        #         batch_clone, rank_score = layer(batch_clone, False)
-        #         rank_scores.append(rank_score)
-        #         rank_scores_opt.append(rank_score_opt)
-        #     rank_scores = torch.stack(rank_scores, dim=0)
-        #     rank_scores_opt = torch.stack(rank_scores_opt, dim=0)
-        #     return (
-        #         self.post_mp(batch),
-        #         self.post_mp(batch_clone),
-        #         rank_scores_opt,
-        #         rank_scores,
-        #     )
+        """
+        1. we have several models GCNs as rank learners
+        2. each GCN has a positive ranking sampled, how to store it? since we have four rankings, we can store them 
+        in a list. n_orders * (positive + negative)
+        3. every time the sample is the same for different order learners. if instantiated differently, will the order be the same?
+        3. we need two para: num_orders, num_samples
+        4. it doesn't have to be the best order, the probability of sampling is corresponding to the performance. 
+        but we don't have a standard. we could use our experience to set the standard. : a curated loss
+        """
 
         if cfg.model.get("rtr_now", False):
             batch = self.encoder(batch)
@@ -178,39 +169,44 @@ class GPSModel(torch.nn.Module):
         ):
             batch = self.encoder(batch)
 
-            # GNN for order learner
-            score_tmp = self.rank_learner_gcn(
-                Batch(
-                    batch=batch,
-                    x=batch.x,
-                    edge_index=batch.edge_index,
-                    edge_attr=batch.edge_attr,
+            scores = []
+            for i in range(cfg.model.get('num_orders', 1)):
+                # GNN for order learner
+                score_tmp = self.rank_learner_gcn[i](
+                    Batch(
+                        batch=batch,
+                        x=batch.x,
+                        edge_index=batch.edge_index,
+                        edge_attr=batch.edge_attr,
+                    )
+                ).x
+                score_tmp, mask = to_dense_batch(score_tmp, batch.batch)
+                score = self.rank_learner(score_tmp).squeeze()
+                s_min = torch.min(score, dim=-1).values
+                s_max = torch.max(score, dim=-1).values
+
+                S = score.unsqueeze(2) - score.unsqueeze(1)
+                S = torch.sigmoid(S)
+                S_min = torch.sigmoid(
+                    s_min.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
                 )
-            ).x
-            score_tmp, mask = to_dense_batch(score_tmp, batch.batch)
-            score = self.rank_learner(score_tmp).squeeze()
-            s_min = torch.min(score, dim=-1).values
-            s_max = torch.max(score, dim=-1).values
+                S_max = torch.sigmoid(
+                    s_max.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
+                )
 
-            S = score.unsqueeze(2) - score.unsqueeze(1)
-            S = torch.sigmoid(S)
-            S_min = torch.sigmoid(
-                s_min.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
-            )
-            S_max = torch.sigmoid(
-                s_max.unsqueeze(-1).unsqueeze(-1) - score.unsqueeze(1)
-            )
+                numerator = S.sum(dim=2) - S_min.sum(dim=2)
+                denominator = S_max.sum(dim=2) - S_min.sum(dim=2)
+                score = (numerator / denominator) * (score.size(1) - 1) + 1
 
-            numerator = S.sum(dim=2) - S_min.sum(dim=2)
-            denominator = S_max.sum(dim=2) - S_min.sum(dim=2)
-            score = (numerator / denominator) * (score.size(1) - 1) + 1
+                scores.append(score)
+
 
             # order_score = degree(batch.edge_index[0], batch.x.shape[0]).to(torch.float)
             if self.training:
                 ranks = []
                 batches = []
                 router_logits = []
-                for i in range(cfg.model.get("num_orders", 1)*2):
+                for i in range(cfg.model.get("num_orders", 1)*cfg.model.get("num_samples", 2)):
                     batch_clone = batch.clone()
                     deg = degree(batch_clone.edge_index[0], batch_clone.x.shape[0]).to(
                         torch.float
@@ -253,13 +249,19 @@ class GPSModel(torch.nn.Module):
                     batches.append(batch_clone)
                     router_logits.append(router_logit)
 
-                return batches, ranks, score, router_logits
+                return batches, ranks, scores, router_logits
 
             else:
-                batch.order_score = score[mask]
-                for i, layer in enumerate(self.layers):
-                    batch = layer(batch)
-                return self.post_mp(batch)
+                preds = []
+                for i in range(cfg.model.get("num_orders", 1)):
+                    batch_clone = batch.clone()
+                    batch_clone.order_score = scores[i][mask]
+                    for i, layer in enumerate(self.layers):
+                        batch_clone = layer(batch_clone)
+                    batch_clone = self.post_mp(batch_clone)
+                    preds.append(batch_clone[0])
+                # mean
+                return torch.stack(preds, dim=0).mean(dim=0), batch_clone[1]
 
         for module in self.children():
             batch = module(batch)

@@ -1,6 +1,6 @@
-for cfg in 'configs/Mamba/HCP/fi-mamba.yaml' # 'configs/Mamba/HCP/gender-mamba.yaml'
+for cfg in 'configs/GatedGCN/brain-GCN.yaml' 'configs/GatedGCN/age-GCN.yaml' 'configs/GatedGCN/brain-GAT.yaml' 'configs/GatedGCN/age-GAT.yaml'
 do
-    for base_lr in 0.01
+    for base_lr in 0.05
     do  
         for wd in 0.0001 
         do
@@ -17,9 +17,8 @@ do
             echo $cfg
             nohup python main.py \
                 --cfg $cfg \
-                --optim.weight_decay 0.001\
-                --optim.base_lr $base_lr > $output_file 2>&1 &
-                
+                --seed 3 \
+                --optim.max_epoch 100 > $output_file 2>&1 &
             # pid=$!
             # wait $pid
             sleep 60

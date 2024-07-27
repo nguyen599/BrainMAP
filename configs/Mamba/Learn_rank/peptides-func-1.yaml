@@ -17,7 +17,7 @@ dataset:
   edge_encoder_name: Bond
   edge_encoder_bn: False
   split_mode: standard
-  dir: /project/uvadm/zhenyu/datasets
+  # dir: /project/uvadm/zhenyu/datasets
 posenc_LapPE:
   enable: False
   eigen:

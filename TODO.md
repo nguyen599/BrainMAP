@@ -1,3 +1,8 @@
+# 7.26
+## TODO
+1. try different settings
+
+
 # 7.7
 ## TODO
 1. use the same order for different layers 

@@ -132,10 +132,15 @@ def run_loop_settings():
 def set_nested_dict(d, keys, value):
     for key in keys[:-1]:
         d = d.setdefault(key, {})
-    try:
-        d[keys[-1]] = float(value)
-    except ValueError:
+
+    if value.isalpha():
         d[keys[-1]] = value
+        return
+
+    try:
+        d[keys[-1]] = int(value)
+    except ValueError:
+        d[keys[-1]] = float(value)
 
 
 if __name__ == "__main__":

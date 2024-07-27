@@ -56,11 +56,10 @@ def learnrank_cross_entropy(batches, ranks, scores, learn_rank, router_logits):
     elif cfg.model.loss_fun =='mse':
         best_indices = torch.topk(torch.stack(losses), cfg.model.get('num_orders', 1), largest=False)[1]   
     
-    numerators = 0
     for i in range(len(best_indices)):
-        numerators += F.mse_loss(ranks[best_indices[i]].float(), scores)
+        numerators = F.mse_loss(ranks[best_indices[i]].float(), scores[i])
     denominators = [
-        F.mse_loss(ranks[index].float(), torch.sort(scores)[0])
+        F.mse_loss(ranks[index].float(), scores[0])
         for index in range(len(ranks))
     ]
     denominators = torch.stack(denominators).sum()

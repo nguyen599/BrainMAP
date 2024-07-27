@@ -19,7 +19,7 @@ dataset:
   edge_encoder_bn: False
   split_mode: random
   split: [0.7, 0.1, 0.2]
-  dir: /project/uvadm/zhenyu/datasets
+  # dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
   centrality_types: katz
@@ -59,10 +59,11 @@ model:
   moe_pos_enc: True
 gt:
   layer_type: CustomGatedGCN+Mamba_MoE
+  layers: 3
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
-  dropout: 0.0
-  attn_dropout: 0.0
+  dropout: 0.2
+  attn_dropout: 0.2
   layer_norm: False
   batch_norm: True
 gnn:
@@ -78,7 +79,7 @@ optim:
   optimizer: adamW
   weight_decay: 1e-5
   base_lr: 0.05
-  max_epoch: 200
+  max_epoch: 400
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0
