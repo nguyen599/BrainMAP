@@ -1,8 +1,8 @@
-for cfg in 'configs/GatedGCN/wm-GCN.yaml' 'configs/GatedGCN/fi-GCN.yaml' 
+for seed in 2000 3000
 do
     for base_lr in 0.05
     do  
-        for wd in 0.0001 
+        for cfg in 'configs/GatedGCN/fi-GatedGCN.yaml' 'configs/GatedGCN/age-GatedGCN.yaml'
         do
             IFS='/'
             read -ra array <<< "$cfg"
@@ -11,21 +11,17 @@ do
             IFS=''
             info="${array[-2]}_${array[-1]}_base_lr_${base_lr}"
 
-
             echo "Start ${info}"
             output_file="log/${info}.log"
             echo $cfg
             nohup python main.py \
                 --cfg $cfg \
-                --seed 11000 \
+                --seed $seed \
                 --optim.max_epoch 100 > $output_file 2>&1 &
-            # pid=$!
-            # wait $pid
-            sleep 10
+            sleep 60
         done
+        pid=$!
+        wait $pid
     done
 done
-
-
-
 

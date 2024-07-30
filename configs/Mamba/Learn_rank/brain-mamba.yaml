@@ -5,8 +5,8 @@ wandb:
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
-  format: HCP
-  name: HCPGender
+  format: Brain
+  name: brain
   task: graph
   task_type: classification
   transductive: False
@@ -37,7 +37,7 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 16
+  batch_size: 32
   eval_period: 1
   ckpt_period: 60
   enable_ckpt: False
@@ -75,8 +75,8 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 1e-5
-  base_lr: 0.05
+  weight_decay: 1e-3
+  base_lr: 0.01
   max_epoch: 200
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
