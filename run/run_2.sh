@@ -2,7 +2,7 @@ for seed in 2000 3000
 do
     for num in 2 4 5 6
     do  
-        for cfg in 'configs/Mamba/HCP/age-mamba.yaml' 'configs/Mamba/HCP/gender-mamba.yaml' 'configs/Mamba/HCP/wm-mamba.yaml'
+        for cfg in 'configs/Mamba/HCP/brain-mamba.yaml' 
         do
             IFS='/'
             read -ra array <<< "$cfg"
