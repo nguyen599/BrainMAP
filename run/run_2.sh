@@ -2,7 +2,7 @@ for seed in 2000 3000
 do
     for base_lr in 0.05
     do  
-        for cfg in 'configs/GatedGCN/fi-GatedGCN.yaml' 'configs/GatedGCN/age-GatedGCN.yaml'
+        for cfg in 'configs/Mamba/HCP/age-mamba.yaml' 'configs/Mamba/HCP/gender-mamba.yaml' 'configs/Mamba/HCP/wm-mamba.yaml'
         do
             IFS='/'
             read -ra array <<< "$cfg"
@@ -18,7 +18,7 @@ do
                 --cfg $cfg \
                 --seed $seed \
                 --optim.max_epoch 100 > $output_file 2>&1 &
-            sleep 60
+            sleep 240
         done
         pid=$!
         wait $pid

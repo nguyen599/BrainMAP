@@ -12,7 +12,7 @@ dataset:
   task_type: regression
   transductive: False
   node_encoder: True
-  node_encoder_name: LinearNode
+  node_encoder_name: LapPE
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
@@ -27,7 +27,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: False
+  enable: True
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -46,16 +46,16 @@ train:
   epoch_resume: 59
 model:
   type: GPSModel
-  loss_fun: mse
+  loss_fun: cross_entropy
   graph_pooling: mean
-  num_experts: 1
-  learn_rank: False
+  num_experts: 3
+  learn_rank: True
   learn_rank_start_epoch: 0
   graph_index: True
   captum: False
   gnn_explainer: False
   mamba_interpret: False
-  same_order_all_layers: False
+  same_order_all_layers: True
   moe_pos_enc: True
 gt:
   layer_type: CustomGatedGCN+Mamba_MoE
