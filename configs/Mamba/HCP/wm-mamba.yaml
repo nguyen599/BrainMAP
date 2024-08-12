@@ -12,7 +12,7 @@ dataset:
   task_type: regression
   transductive: False
   node_encoder: True
-  node_encoder_name: LinearNode
+  node_encoder_name: LapPE
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
@@ -27,7 +27,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: False
+  enable: True
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -73,12 +73,12 @@ gnn:
   dim_inner: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   batchnorm: True
   act: relu
-  dropout: 0.0
+  dropout: 0.5
 optim:
   clip_grad_norm: True
   optimizer: adamW
   weight_decay: 1e-5
-  base_lr: 0.05
+  base_lr: 0.1
   max_epoch: 400
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10

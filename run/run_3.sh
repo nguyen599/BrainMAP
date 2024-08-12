@@ -1,4 +1,4 @@
-for seed in 0 1000
+for seed in 4000 5000
 do
     for num in 2 4 5 6
     do  

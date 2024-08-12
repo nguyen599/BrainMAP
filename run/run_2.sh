@@ -1,8 +1,8 @@
 for seed in 2000 3000
 do
-    for base_lr in 0.05
+    for num in 2 4 5 6
     do  
-        for cfg in 'configs/GatedGCN/fi-GatedGCN.yaml' 'configs/GatedGCN/age-GatedGCN.yaml'
+        for cfg in 'configs/BMoE/brain-mamba.yaml' 
         do
             IFS='/'
             read -ra array <<< "$cfg"
@@ -17,11 +17,11 @@ do
             nohup python main.py \
                 --cfg $cfg \
                 --seed $seed \
+                --model.num_experts $num \
                 --optim.max_epoch 100 > $output_file 2>&1 &
-            sleep 60
+            sleep 150
         done
-        pid=$!
-        wait $pid
+        # pid=$!
+        # wait $pid
     done
 done
-

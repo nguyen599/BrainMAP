@@ -7,18 +7,18 @@ wandb:
   entity: vjd5zr
 dataset:
   format: HCP
-  name: HCPFI
+  name: HCPWM
   task: graph
   task_type: regression
   transductive: False
   node_encoder: True
-  node_encoder_name: LinearNode
+  node_encoder_name: LapPE
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
   edge_encoder_bn: False
   split_mode: random
-  split: [0.5, 0.2, 0.3]
+  split: [0.7, 0.1, 0.2]
   # dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
@@ -27,7 +27,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: False
+  enable: True
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -38,32 +38,32 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 16
+  batch_size: 64
   eval_period: 1
   ckpt_period: 60
   enable_ckpt: False
   auto_resume: False
-  # epoch_resume: False
+  epoch_resume: 59
 model:
   type: GPSModel
-  loss_fun: cross_entropy
+  loss_fun: mse
   graph_pooling: mean
-  num_experts: 1
-  learn_rank: False
+  num_experts: 3
+  learn_rank: True
   learn_rank_start_epoch: 0
   graph_index: True
   captum: False
   gnn_explainer: False
   mamba_interpret: False
-  same_order_all_layers: False
+  same_order_all_layers: True
   moe_pos_enc: True
-  load_balancing_loss: False
 gt:
   layer_type: CustomGatedGCN+Mamba_MoE
+  layers: 3
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
-  dropout: 0.0
-  attn_dropout: 0.0
+  dropout: 0.2
+  attn_dropout: 0.2
   layer_norm: False
   batch_norm: True
 gnn:
@@ -79,7 +79,7 @@ optim:
   optimizer: adamW
   weight_decay: 1e-5
   base_lr: 0.05
-  max_epoch: 200
+  max_epoch: 400
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0

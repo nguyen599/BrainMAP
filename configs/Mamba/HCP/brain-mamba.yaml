@@ -11,7 +11,7 @@ dataset:
   task_type: classification
   transductive: False
   node_encoder: True
-  node_encoder_name: LinearNode
+  node_encoder_name: LapPE
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
@@ -26,7 +26,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: False
+  enable: True
   eigen:
     laplacian_norm: none
     eigvec_norm: L2

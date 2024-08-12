@@ -66,10 +66,11 @@ def learnrank_cross_entropy(batches, ranks, scores, learn_rank, router_logits):
     rank_loss = numerators / denominators
     loss = torch.sum(losses[best_indices]) + learn_rank * rank_loss
 
-    for i in range(len(best_indices)):
-        for j in range(len(router_logits[0])):
-            router_probs = torch.softmax(router_logits[best_indices[i]][j], dim=-1)
-            loss += load_balancing_loss(router_probs) * 0.1
+    if cfg.model.get('load_balancing_loss', True):
+        for i in range(len(best_indices)):
+            for j in range(len(router_logits[0])):
+                router_probs = torch.softmax(router_logits[best_indices[i]][j], dim=-1)
+                loss += load_balancing_loss(router_probs) * 0.1
 
     return (
         loss,
