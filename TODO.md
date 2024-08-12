@@ -1,3 +1,21 @@
+# 8.12
+## TODO
+1. how to get the attention files: output
+   1. find the attention value
+   2. output in a file: json
+2. how to get the explanation files
+   1. find the explanation score
+   2. output in a file: json
+
+
+
+
+
+
+
+
+
+
 # 7.26
 ## TODO
 1. try different settings

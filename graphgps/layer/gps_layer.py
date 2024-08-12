@@ -556,6 +556,7 @@ class GPSLayer(nn.Module):
         h_ind_perm_reverse = torch.argsort(h_ind_perm)
 
         router_mask, router_probs, router_logits = self.router(h_dense)
+        pdb.set_trace()
         
         h_clone = h_dense.clone()
 
