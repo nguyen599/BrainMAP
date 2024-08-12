@@ -57,6 +57,7 @@ model:
   mamba_interpret: False
   same_order_all_layers: True
   moe_pos_enc: True
+  load_balancing_loss: False
 gt:
   layer_type: CustomGatedGCN+Mamba_MoE
   n_heads: 4

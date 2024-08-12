@@ -1,14 +1,15 @@
 out_dir: results/degre_mult
-metric_best: accuracy
+metric_best: mae
+metric_agg: argmin
 wandb:
   use: True
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
   format: HCP
-  name: HCPAge
+  name: HCPWM
   task: graph
-  task_type: classification
+  task_type: regression
   transductive: False
   node_encoder: True
   node_encoder_name: LapPE
@@ -17,7 +18,7 @@ dataset:
   edge_encoder_name: DummyEdge
   edge_encoder_bn: False
   split_mode: random
-  split: [0.5, 0.2, 0.3]
+  split: [0.7, 0.1, 0.2]
   # dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
@@ -37,7 +38,7 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 16
+  batch_size: 64
   eval_period: 1
   ckpt_period: 60
   enable_ckpt: False
@@ -45,7 +46,7 @@ train:
   epoch_resume: 59
 model:
   type: GPSModel
-  loss_fun: cross_entropy
+  loss_fun: mse
   graph_pooling: mean
   num_experts: 3
   learn_rank: True
@@ -58,10 +59,11 @@ model:
   moe_pos_enc: True
 gt:
   layer_type: CustomGatedGCN+Mamba_MoE
+  layers: 3
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
-  dropout: 0.0
-  attn_dropout: 0.0
+  dropout: 0.2
+  attn_dropout: 0.2
   layer_norm: False
   batch_norm: True
 gnn:
@@ -75,9 +77,9 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 1e-3
+  weight_decay: 1e-5
   base_lr: 0.05
-  max_epoch: 200
+  max_epoch: 400
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0

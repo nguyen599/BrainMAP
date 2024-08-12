@@ -1,14 +1,15 @@
 out_dir: results/degre_mult
-metric_best: accuracy
+metric_best: mae
+metric_agg: argmin
 wandb:
   use: True
   project: LRGB-Benchmark-RandomSeed
   entity: vjd5zr
 dataset:
   format: HCP
-  name: HCPAge
+  name: HCPFI
   task: graph
-  task_type: classification
+  task_type: regression
   transductive: False
   node_encoder: True
   node_encoder_name: LapPE
@@ -42,7 +43,7 @@ train:
   ckpt_period: 60
   enable_ckpt: False
   auto_resume: False
-  epoch_resume: 59
+  # epoch_resume: False
 model:
   type: GPSModel
   loss_fun: cross_entropy
@@ -75,7 +76,7 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 1e-3
+  weight_decay: 1e-5
   base_lr: 0.05
   max_epoch: 200
   scheduler: cosine_with_warmup

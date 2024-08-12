@@ -6,7 +6,7 @@ wandb:
   entity: vjd5zr
 dataset:
   format: HCP
-  name: HCPAge
+  name: HCPGender
   task: graph
   task_type: classification
   transductive: False
@@ -75,7 +75,7 @@ gnn:
 optim:
   clip_grad_norm: True
   optimizer: adamW
-  weight_decay: 1e-3
+  weight_decay: 1e-5
   base_lr: 0.05
   max_epoch: 200
   scheduler: cosine_with_warmup
