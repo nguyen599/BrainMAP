@@ -446,18 +446,19 @@ class GPSLayer(nn.Module):
                     h_ind_perm_reverse = torch.argsort(h_ind_perm)
 
                     h_attn = self.self_attn(h_dense)[mask][h_ind_perm_reverse]
-                    if cfg.model.get("mamba_interpret", False):
-                        h_attn, interpret_score = self.self_attn(
-                            h_dense, interpret=True
-                        )
-                        h_attn = h_attn[mask][h_ind_perm_reverse]
-                        interpret_score = interpret_score.unsqueeze(-1)[mask][
-                            h_ind_perm_reverse
-                        ]
-                        torch.save(
-                            [interpret_score, h_attn, batch.y],
-                            f"explanations/mamba/interpret_score_{batch.graph_id[0]}.pt",
-                        )
+                    if cfg.dataset.name == 'brain':
+                        if cfg.model.get("mamba_interpret", False):
+                            h_attn, interpret_score = self.self_attn(
+                                h_dense, interpret=True
+                            )
+                            h_attn = h_attn[mask][h_ind_perm_reverse]
+                            interpret_score = interpret_score.unsqueeze(-1)[mask][
+                                h_ind_perm_reverse
+                            ]
+                            torch.save(
+                                [interpret_score, h_attn, batch.y],
+                                f"explanations/mamba/interpret_score_{batch.graph_id[0]}.pt",
+                            )
 
                 else:
                     mamba_arr = []
@@ -556,8 +557,6 @@ class GPSLayer(nn.Module):
         h_ind_perm_reverse = torch.argsort(h_ind_perm)
 
         router_mask, router_probs, router_logits = self.router(h_dense)
-        pdb.set_trace()
-        
         h_clone = h_dense.clone()
 
         router_mask = router_mask.bool()
@@ -567,8 +566,16 @@ class GPSLayer(nn.Module):
         for i in idx_mask:
             h_clone[router_mask[:, i]] = self.experts_mamba[i](h_dense[router_mask[:, i]])
         
+        if cfg.dataset.name == 'brain':
+            if cfg.get('interpret', None) is None:
+                cfg.interpret = [[h_clone.cpu(), batch.y.cpu()]]
+            else:
+                if len(cfg.interpret) > 50:
+                    pass
+                else:
+                    cfg.interpret.append([h_clone.cpu(), batch.y.cpu()])
         h_attn = router_probs.unsqueeze(-1) * h_clone # B * [B, L, D] -> [B, L, D]
-        h_attn = h_clone[mask][h_ind_perm_reverse]
+        h_attn = h_attn[mask][h_ind_perm_reverse]
         
         if hasattr(batch, "router_logits"):
             batch.router_logits.append(router_logits)
@@ -625,14 +632,14 @@ class GPSLayer(nn.Module):
 
     def _sa_block(self, x, attn_mask, key_padding_mask):
         """Self-attention block."""
-        x = self.self_attn(
+        x, _ = self.self_attn(
             x,
             x,
             x,
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             need_weights=False,
-        )[0]
+        )
         return x
 
     def _ff_block(self, x):

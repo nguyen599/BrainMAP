@@ -4,7 +4,7 @@ from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.register import register_loss
 import torch.nn.functional as F
 import pdb
-
+import json
 
 def load_balancing_loss(router_probs):
     """
@@ -22,7 +22,7 @@ def load_balancing_loss(router_probs):
     expert_mask = expert_mask.float()
     graphs_per_expert = torch.mean(expert_mask, dim=0)
     router_prob_per_expert = torch.mean(router_probs, dim=0)
-
+    # pdb.set_trace()
     return torch.mean(graphs_per_expert * router_prob_per_expert) * (num_experts**2)
 
 
@@ -65,12 +65,16 @@ def learnrank_cross_entropy(batches, ranks, scores, learn_rank, router_logits):
     denominators = torch.stack(denominators).sum()
     rank_loss = numerators / denominators
     loss = torch.sum(losses[best_indices]) + learn_rank * rank_loss
-
+    
+    torch.save(torch.cat(router_logits[0]).cpu().detach(), f'log/router_logits_{cfg.dataset.name}.pt')
     if cfg.model.get('load_balancing_loss', True):
         for i in range(len(best_indices)):
             for j in range(len(router_logits[0])):
                 router_probs = torch.softmax(router_logits[best_indices[i]][j], dim=-1)
-                loss += load_balancing_loss(router_probs) * 0.1
+                if cfg.dataset.name == 'brain' or cfg.dataset.name == 'HCPAge':
+                    loss += load_balancing_loss(router_probs) * 0.1
+                else:
+                    loss += load_balancing_loss(router_probs) * 0.1
 
     return (
         loss,

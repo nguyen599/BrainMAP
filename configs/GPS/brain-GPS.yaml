@@ -11,7 +11,7 @@ dataset:
   task_type: classification
   transductive: False
   node_encoder: True
-  node_encoder_name: LapPE
+  node_encoder_name: LinearNode
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
@@ -25,7 +25,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: True
+  enable: False
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -45,6 +45,8 @@ model:
   graph_pooling: mean
   num_experts: 6
   learn_rank: False
+  captum: False
+  gnn_explainer: True
 gt:
   layer_type: CustomGatedGCN+Transformer
   n_heads: 4

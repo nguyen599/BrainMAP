@@ -11,7 +11,7 @@ dataset:
   task_type: classification
   transductive: False
   node_encoder: True
-  node_encoder_name: LapPE
+  node_encoder_name: LinearNode
   node_encoder_bn: False
   edge_encoder: True
   edge_encoder_name: DummyEdge
@@ -26,7 +26,7 @@ prep:
   neighbors: False
   neighbor_hops: 6
 posenc_LapPE:
-  enable: True
+  enable: False
   eigen:
     laplacian_norm: none
     eigvec_norm: L2
@@ -47,17 +47,17 @@ model:
   type: GPSModel
   loss_fun: cross_entropy
   graph_pooling: mean
-  num_experts: 3
-  learn_rank: True
+  num_experts: 1
+  learn_rank: False
   learn_rank_start_epoch: 0
-  graph_index: True
+  graph_index: False
   captum: False
-  gnn_explainer: False
+  gnn_explainer: True
   mamba_interpret: False
-  same_order_all_layers: True
+  same_order_all_layers: False
   moe_pos_enc: True
 gt:
-  layer_type: CustomGatedGCN+Mamba_MoE
+  layer_type: CustomGatedGCN+Mamba_Hybrid_Degree_Noise
   n_heads: 4
   dim_hidden: 96  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.0

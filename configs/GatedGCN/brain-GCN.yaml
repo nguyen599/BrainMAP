@@ -35,8 +35,8 @@ model:
   gnn_explainer: False
 gnn:
   # head: inductive_node
-  layers_pre_mp: 0
-  layers_mp: 8
+  layers_pre_mp: 3
+  layers_mp: 3
   layers_post_mp: 3
   dim_inner: 108
   layer_type: gcn

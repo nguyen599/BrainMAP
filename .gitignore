@@ -20,6 +20,8 @@ vocprep/VOC/*.pickle
 vocprep/VOC/*.pkl
 vocprep/VOC/*.zip
 splits/
+fig/
+explanations/
 wandb/
 __pycache__/
 .idea
@@ -168,5 +170,3 @@ test.py
 # files
 *.gz
 *.pt
-
-

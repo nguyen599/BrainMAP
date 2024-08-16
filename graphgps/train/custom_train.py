@@ -120,7 +120,7 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
             prof.start_profile()
         batch.split = "train"
         batch.to(torch.device(cfg.device))
-        if epoch == 50 and cfg.model.get("gnn_explainer", False):
+        if epoch == 20 and cfg.model.get("gnn_explainer", False):
             batch_ = batch.clone().to(torch.device(cfg.device))
 
             custom_forward = ExpModel(model)
@@ -157,9 +157,14 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
                         ):
                             file = f"explanations/explanation_{batch_.graph_id[i]}.pt"
                         else:
-                            file = (
-                                f"explanations/explanationgcn_{batch_.graph_id[i]}.pt"
-                            )
+                            try:
+                                file = (
+                                    f"explanations/explanation_{cfg.gt.layer_type}_{batch_.graph_id[i]}.pt"
+                                )
+                            except:
+                                file = (
+                                    f"explanations/explanation_{cfg.gnn.layer_type}_{batch_.graph_id[i]}.pt"
+                                )
                         torch.save(
                             [
                                 explanation,
@@ -263,6 +268,14 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation,
     if if_select:
         print("################ Print avg nodes")
         print(total_node / sample_count)
+    
+    if cfg.get('interpret', None) is not None:
+        # we concatnate and save and renew
+        repr = torch.cat([tup[0] for tup in cfg.interpret]).cpu()
+        label = torch.cat([tup[1] for tup in cfg.interpret]).cpu()
+        torch.save(repr, 'repr.pt')
+        torch.save(label, 'label.pt')
+        cfg.interpret = []
 
 
 @torch.no_grad()
@@ -298,7 +311,7 @@ def eval_epoch(logger, loader, model, split="val", epoch=0):
 
             custom_forward = CustomModel(model)
 
-            if epoch == 100 and cfg.model.get("captum", False):
+            if epoch == 10 and cfg.model.get("captum", False):
                 ig = Lime(
                     custom_forward,
                 )

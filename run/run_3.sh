@@ -1,6 +1,6 @@
-for seed in 4000 5000
+for seed in 0 1000
 do
-    for num in 2 4 5 6
+    for num in 4 5 6
     do  
         for cfg in 'configs/BMoE/brain-mamba.yaml' 
         do
@@ -21,7 +21,7 @@ do
                 --optim.max_epoch 100 > $output_file 2>&1 &
             sleep 150
         done
-        # pid=$!
-        # wait $pid
     done
+    pid=$!
+    wait $pid
 done

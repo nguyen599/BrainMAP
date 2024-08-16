@@ -194,6 +194,9 @@ class Top1Router(nn.Module):
         self, h_dense: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         r""" """
+        
+        # normalize layer_norm
+        # h_dense = torch.nn.functional.layer_norm(h_dense, h_dense.shape[1:])
 
         if cfg.model.get(
             "moe_pos_enc",
@@ -219,8 +222,9 @@ class Top1Router(nn.Module):
             router_logits = router_logits + noise
 
         router_logits = self.experts_linear(router_logits)
-
+        
         router_probs = F.softmax(router_logits, dim=-1)
+
         return router_probs, router_logits
 
     def forward(

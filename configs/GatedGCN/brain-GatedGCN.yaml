@@ -32,7 +32,7 @@ model:
   loss_fun: cross_entropy
   graph_pooling: mean
   graph_index: True
-  gnn_explainer: False
+  gnn_explainer: True
 gnn:
   # head: inductive_node
   layers_pre_mp: 0
