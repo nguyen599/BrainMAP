@@ -1,8 +1,8 @@
-for seed in 0 1000
+for seed in 0 1000 2000 3000
 do
-    for num in 4 5 6
+    for num in 5
     do  
-        for cfg in 'configs/BMoE/brain-mamba.yaml' 
+        for cfg in 'configs/BMoE/wm-mamba.yaml' 
         do
             IFS='/'
             read -ra array <<< "$cfg"
@@ -22,6 +22,6 @@ do
             sleep 150
         done
     done
-    pid=$!
-    wait $pid
+    # pid=$!
+    # wait $pid
 done

@@ -10,7 +10,7 @@ dataset:
   name: HCPWM
   task: graph
   task_type: regression
-  transductive: False
+  transductive: False 
   node_encoder: True
   node_encoder_name: LapPE
   node_encoder_bn: False
@@ -38,7 +38,7 @@ posenc_LapPE:
   raw_norm_type: none
 train:
   mode: custom
-  batch_size: 64
+  batch_size: 16
   eval_period: 1
   ckpt_period: 60
   enable_ckpt: False

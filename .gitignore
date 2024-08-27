@@ -20,7 +20,7 @@ vocprep/VOC/*.pickle
 vocprep/VOC/*.pkl
 vocprep/VOC/*.zip
 splits/
-fig/
+# fig/
 explanations/
 wandb/
 __pycache__/
