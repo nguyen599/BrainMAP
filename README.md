@@ -1,11 +1,11 @@
 # Introduction
-This repo is forked from Graph-mamba paper, for reproduction use.
+This repo is the code of paper **BrainMAP: Learning Multiple Activation Pathways in Brain Networks** accepted as AAAI 2025 oral.
 
 # Guideline
 ## Installation
 ```
-conda create -n graph-mamba python==3.9
-conda activate graph-mamba
+conda create -n brainmap python==3.9
+conda activate brainmap
 pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.1+cu118.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
 pip install torch-geometric[graphgym]
@@ -29,13 +29,13 @@ Note: After cloning from original repo, need to modify: Device, Config of graphg
 
 ### Additional modification
 ```python
-File: /miniconda3/envs/graph-mamba/lib/python3.9/site-packages/torch_geometric/graphgym/config.py 
+File: /miniconda3/envs/brainmap/lib/python3.9/site-packages/torch_geometric/graphgym/config.py 
 
 Modification: CN() -> CN(new_allowed=True)
 ```
 
 ```python
-File: /miniconda3/envs/graph-mamba/lib/python3.9/site-packages/torch_geometric/graphgym/utils/device.py
+File: /miniconda3/envs/brainmap/lib/python3.9/site-packages/torch_geometric/graphgym/utils/device.py
 
 Modification: 
 def auto_select_device():
