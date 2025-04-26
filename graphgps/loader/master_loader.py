@@ -150,8 +150,6 @@ def create_graph_data(connectivity_matrices, labels=None):
 
 
 
-
-
 class NeuroGraphDataset(InMemoryDataset):
     r"""The NeuroGraph benchmark datasets from the
     `"NeuroGraph: Benchmarks for Graph Machine Learning in Brain Connectomics"
@@ -284,7 +282,7 @@ class NeuroGraphDataset(InMemoryDataset):
 
         print("Creating graph data objects...")
         data_list = create_graph_data(connectivity_matrices, labels)
-
+        print(data_list[0])
         self.save(data_list, self.processed_paths[0])
 
 
