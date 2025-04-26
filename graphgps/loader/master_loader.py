@@ -137,7 +137,7 @@ def create_graph_data(connectivity_matrices, labels=None):
     data_list = []
     for i in tqdm(range(len(connectivity_matrices))):
         matrix = connectivity_matrices[i]
-        edge_index = (matrix > 0.4).nonzero(as_tuple=False).t()  # Create edges based on non-zero entries
+        edge_index = (matrix > 0.1).nonzero(as_tuple=False).t()  # Create edges based on non-zero entries
         edge_attr = matrix[edge_index[0], edge_index[1]]  # Edge weights are the matrix values
         x = torch.eye(matrix.shape[0])  # Node features (Identity matrix as features)
 
