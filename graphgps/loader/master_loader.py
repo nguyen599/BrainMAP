@@ -53,6 +53,240 @@ from graphgps.transform.dist_transforms import (
     effective_resistances_from_embedding,
 )
 
+import os
+import os.path as osp
+from typing import Callable, List, Optional
+
+from torch_geometric.data import (
+    Data,
+    InMemoryDataset,
+    download_url,
+    extract_zip,
+)
+from torch_geometric.io import fs
+
+
+import torch
+import numpy as np
+import pandas as pd
+from tqdm.auto import tqdm
+from joblib import Parallel, delayed
+
+# Function to convert a single row from the dataframe into a matrix
+def reshape_to_matrix(row, participant_id=None):
+    # Drop participant_id if it exists
+    if participant_id is not None and participant_id in row.index:
+        row = row.drop(participant_id)
+
+    # Extract all row and column indices from column names
+    cols = row.index
+    row_indices = set()
+    col_indices = set()
+
+    for col in cols:
+        if '_' in col:
+            try:
+                parts = col.split('_')
+                row_idx = int(parts[0].replace('throw', ''))
+                col_idx = int(parts[1].replace('thcolumn', ''))
+                row_indices.add(row_idx)
+                col_indices.add(col_idx)
+            except:
+                continue
+
+    max_row = max(row_indices) + 1 if row_indices else 0
+    max_col = max(col_indices) + 1 if col_indices else 0
+
+    # If dimensions don't match, make square by using the larger dimension
+    matrix_size = max(max_row, max_col)
+    matrix = np.zeros((matrix_size, matrix_size))
+
+    # Fill the matrix with values
+    for col in cols:
+        if '_' in col:
+            try:
+                parts = col.split('_')
+                row_idx = int(parts[0].replace('throw', ''))
+                col_idx = int(parts[1].replace('thcolumn', ''))
+                if row_idx < matrix_size and col_idx < matrix_size:
+                    matrix[row_idx, col_idx] = row[col]
+            except:
+                continue
+
+    return participant_id, matrix
+
+def fcm2ft(df_fcm):
+    results = Parallel(n_jobs=42)(
+            delayed(reshape_to_matrix)(row.copy(deep=False), row['participant_id'])
+            for pid, row in tqdm(df_fcm.iterrows(), total=len(df_fcm))
+        )
+
+    all_matrices_fixed = {}
+    for participant, matrix in results:
+        all_matrices_fixed[participant] = matrix
+
+    return all_matrices_fixed
+
+# Make the matrix symmetric
+def sym_matrix(corr):
+    corr_full = corr + corr.T - np.diag(np.diag(corr))
+    np.fill_diagonal(corr_full, 1)
+    return corr_full
+
+def create_graph_data(connectivity_matrices, labels=None):
+    data_list = []
+    for i in tqdm(range(len(connectivity_matrices))):
+        matrix = connectivity_matrices[i]
+        edge_index = (matrix > 0.4).nonzero(as_tuple=False).t()  # Create edges based on non-zero entries
+        edge_attr = matrix[edge_index[0], edge_index[1]]  # Edge weights are the matrix values
+        x = torch.eye(matrix.shape[0])  # Node features (Identity matrix as features)
+
+        # Create graph data object
+        y = torch.tensor([labels[i]], dtype=torch.float) if labels is not None else torch.tensor([0], dtype=torch.float)
+        graph_data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
+        data_list.append(graph_data)
+
+    return data_list
+
+
+
+
+
+class NeuroGraphDataset(InMemoryDataset):
+    r"""The NeuroGraph benchmark datasets from the
+    `"NeuroGraph: Benchmarks for Graph Machine Learning in Brain Connectomics"
+    <https://arxiv.org/abs/2306.06202>`_ paper.
+    :class:`NeuroGraphDataset` holds a collection of five neuroimaging graph
+    learning datasets that span multiple categories of demographics, mental
+    states, and cognitive traits.
+    See the `documentation
+    <https://neurograph.readthedocs.io/en/latest/NeuroGraph.html>`_ and the
+    `Github <https://github.com/Anwar-Said/NeuroGraph>`_ for more details.
+
+    +--------------------+---------+----------------------+
+    | Dataset            | #Graphs | Task                 |
+    +====================+=========+======================+
+    | :obj:`HCPTask`     | 7,443   | Graph Classification |
+    +--------------------+---------+----------------------+
+    | :obj:`HCPGender`   | 1,078   | Graph Classification |
+    +--------------------+---------+----------------------+
+    | :obj:`HCPAge`      | 1,065   | Graph Classification |
+    +--------------------+---------+----------------------+
+    | :obj:`HCPFI`       | 1,071   | Graph Regression     |
+    +--------------------+---------+----------------------+
+    | :obj:`HCPWM`       | 1,078   | Graph Regression     |
+    +--------------------+---------+----------------------+
+
+    Args:
+        root (str): Root directory where the dataset should be saved.
+        name (str): The name of the dataset (one of :obj:`"HCPGender"`,
+            :obj:`"HCPTask"`, :obj:`"HCPAge"`, :obj:`"HCPFI"`,
+            :obj:`"HCPWM"`).
+        transform (callable, optional): A function/transform that takes in an
+            :obj:`torch_geometric.data.Data` object and returns a transformed
+            version. The data object will be transformed before every access.
+            (default: :obj:`None`)
+        pre_transform (callable, optional): A function/transform that takes in
+            an :obj:`torch_geometric.data.Data` object and returns a
+            transformed version. The data object will be transformed before
+            being saved to disk. (default: :obj:`None`)
+        pre_filter (callable, optional): A function that takes in an
+            :obj:`torch_geometric.data.Data` object and returns a boolean
+            value, indicating whether the data object should be included in the
+            final dataset. (default: :obj:`None`)
+        force_reload (bool, optional): Whether to re-process the dataset.
+            (default: :obj:`False`)
+    """
+    url = 'https://vanderbilt.box.com/shared/static'
+    filenames = {
+        'HCPGender': 'r6hlz2arm7yiy6v6981cv2nzq3b0meax.zip',
+        'HCPTask': '8wzz4y17wpxg2stip7iybtmymnybwvma.zip',
+        'HCPAge': 'lzzks4472czy9f9vc8aikp7pdbknmtfe.zip',
+        'HCPWM': 'xtmpa6712fidi94x6kevpsddf9skuoxy.zip',
+        'HCPFI': 'g2md9h9snh7jh6eeay02k1kr9m4ido9f.zip',
+    }
+
+    def __init__(
+        self,
+        root: str,
+        name: str,
+        transform: Optional[Callable] = None,
+        pre_transform: Optional[Callable] = None,
+        pre_filter: Optional[Callable] = None,
+        force_reload: bool = False,
+    ) -> None:
+        assert name in self.filenames.keys()
+        self.name = name
+
+        super().__init__(root, transform, pre_transform, pre_filter,
+                         force_reload=force_reload)
+        self.load(self.processed_paths[0])
+
+    @property
+    def raw_dir(self) -> str:
+        return osp.join(self.root, self.name, 'raw')
+
+    @property
+    def raw_file_names(self) -> str:
+        return 'data.pt'
+
+    @property
+    def processed_dir(self) -> str:
+        return osp.join(self.root, self.name, 'processed')
+
+    @property
+    def processed_file_names(self) -> str:
+        return 'data.pt'
+
+    def download(self) -> None:
+        pass
+
+    def process(self) -> None:
+        # data, slices = fs.torch_load(self.raw_paths[0])
+
+        # num_samples = slices['x'].size(0) - 1
+        # data_list: List[Data] = []
+        # for i in range(num_samples):
+        #     x = data.x[slices['x'][i]:slices['x'][i + 1]]
+        #     start = slices['edge_index'][i]
+        #     end = slices['edge_index'][i + 1]
+        #     edge_index = data.edge_index[:, start:end]
+        #     sample = Data(x=x, edge_index=edge_index, y=data.y[i])
+
+        #     if self.pre_filter is not None and not self.pre_filter(sample):
+        #         continue
+
+        #     if self.pre_transform is not None:
+        #         sample = self.pre_transform(sample)
+
+        #     data_list.append(sample)
+        train_fcm = pd.read_parquet('/kaggle/input/test-data/TRAIN_FUNCTIONAL_CONNECTOME_MATRICES_new_36P_Pearson.parquet', engine="fastparquet")
+        # test_fcm = pd.read_parquet('/kaggle/input/test-data/TEST_FUNCTIONAL_CONNECTOME_MATRICES.parquet', engine="fastparquet")
+
+        print("Processing matrices...")
+        all_matrices_fixed = fcm2ft(train_fcm)
+        # all_matrices_fixed_test = fcm2ft(test_fcm)
+
+        print("Making matrices symmetric...")
+        data = list(all_matrices_fixed.values())
+        data = [sym_matrix(x) for x in data]
+        # test_data_matrices = list(all_matrices_fixed_test.values())
+        # test_data_matrices = [sym_matrix(x) for x in test_data_matrices]
+
+        print("Loading labels...")
+        labels_df = pd.read_excel('/kaggle/input/widsdatathon2025/TRAIN_NEW/TRAINING_SOLUTIONS.xlsx')
+        labels = list(labels_df['Sex_F'].values)
+
+        print("Converting to torch tensors...")
+        connectivity_matrices = [torch.tensor(mat).float() for mat in data]
+        # labels_tensor = torch.tensor(labels).float()
+        # connectivity_matrices_test = [torch.tensor(mat).float() for mat in test_data_matrices]
+
+        print("Creating graph data objects...")
+        data_list = create_graph_data(connectivity_matrices, labels)
+
+        self.save(data_list, self.processed_paths[0])
+
 
 def load_hcp(name, dataset_dir):
     r"""Load HCP dataset objects.
