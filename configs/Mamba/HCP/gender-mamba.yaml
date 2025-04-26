@@ -1,9 +1,9 @@
-out_dir: results/degre_mult
-metric_best: accuracy
+out_dir: /kaggle/working/results
+metric_best: f1
 wandb:
   use: True
-  project: LRGB-Benchmark-RandomSeed
-  entity: vjd5zr
+  project: HCPGender
+  entity: pnvmanh2123-vncert
 dataset:
   format: HCP
   name: HCPGender
@@ -17,7 +17,7 @@ dataset:
   edge_encoder_name: DummyEdge
   edge_encoder_bn: False
   split_mode: random
-  split: [0.5, 0.2, 0.3]
+  split: [0.8, 0.1, 0.1]
   # dir: /project/uvadm/zhenyu/datasets
 prep:
   centrality: False
@@ -77,7 +77,7 @@ optim:
   optimizer: adamW
   weight_decay: 1e-5
   base_lr: 0.05
-  max_epoch: 200
+  max_epoch: 40
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10
 seed: 0
