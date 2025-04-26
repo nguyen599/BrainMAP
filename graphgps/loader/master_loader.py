@@ -142,7 +142,7 @@ def create_graph_data(connectivity_matrices, labels=None):
         x = torch.eye(matrix.shape[0])  # Node features (Identity matrix as features)
 
         # Create graph data object
-        y = torch.tensor([labels[i]], dtype=torch.float) if labels is not None else torch.tensor([0], dtype=torch.float)
+        y = torch.tensor([labels[i]], dtype=torch.int32)
         graph_data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
         if labels[i]==1:
             data_list.append(graph_data)
