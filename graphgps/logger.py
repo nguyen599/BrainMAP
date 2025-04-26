@@ -81,7 +81,7 @@ class CustomLogger(Logger):
             # TorchMetrics AUROC on GPU if available.
             auroc_score = auroc(
                 pred_score.to(torch.device(cfg.device)),
-                true.to(torch.device(cfg.device)),
+                true.long().to(torch.device(cfg.device)),
                 pos_label=1,
             )
             if self.test_scores:
